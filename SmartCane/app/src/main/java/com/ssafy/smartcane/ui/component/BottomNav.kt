@@ -75,11 +75,12 @@ fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
                         modifier = Modifier.size(30.dp),
                         tint = if (isActive) NavYellow else AppWhite
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(0.dp))
                     Text(
                         text = item.label,
+                        modifier = Modifier.padding(bottom = 10.dp),
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         color = if (isActive) NavYellow else AppWhite
                     )
                 }

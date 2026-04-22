@@ -95,7 +95,7 @@ private fun RouteMainView(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 22.dp)
+                .padding(start = 20.dp, top = 64.dp, end = 20.dp, bottom = 22.dp)
         ) {
             Text(
                 text = "경로 탐색",
@@ -103,7 +103,8 @@ private fun RouteMainView(
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold
             )
-            Spacer(Modifier.height(38.dp))
+            Column(modifier = Modifier.padding(horizontal = 10.dp)) {
+            Spacer(Modifier.height(40.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -120,6 +121,7 @@ private fun RouteMainView(
                 NavBtn("길 안내 및 안전 보행 시작", filled = true, big = true, onClick = onNavigation)
                 NavBtn("간편 경로 안내", outlined = true, big = true, onClick = onSimple)
                 NavBtn("즐겨찾기에서 선택", outlined = true, big = true, onClick = onFav)
+            }
             }
         }
         BottomNav(active = NavTab.Route, onTab = onTabChange)

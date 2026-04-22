@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.theme.AppWhite
+import com.ssafy.smartcane.ui.theme.NavBarBg
 
 private val SafetyAccent = Color(0xFF005387)
 private val SafetyBackground = Color(0xFF001B2B)
@@ -43,33 +44,45 @@ fun SafetyScreen(
     onEnabledChange: (Boolean) -> Unit
 ) {
     var enabled by remember { mutableStateOf(false) }
-    val background = if (enabled) SafetyBackground else Color(0xFF3A3A3A)
+    val background = if (enabled) SafetyBackground else NavBarBg
 
     LaunchedEffect(enabled) {
         onEnabledChange(enabled)
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(background),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(background)
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .padding(horizontal = 20.dp)
         ) {
-            Spacer(Modifier.weight(1f))
+            Box(modifier = Modifier.align(Alignment.Center)) {
+                SafetyActionButton(enabled = enabled, onClick = { enabled = !enabled })
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = (-132).dp)
+            ) {
             SafetyStatusText(enabled = enabled)
-            Spacer(Modifier.height(34.dp))
-            SafetyActionButton(enabled = enabled, onClick = { enabled = !enabled })
-            Spacer(Modifier.height(40.dp))
-            SafetySwitch(enabled = enabled, onToggle = { enabled = !enabled })
-            Spacer(Modifier.weight(1f))
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = 103.dp)
+            ) {
+                SafetySwitch(enabled = enabled, onToggle = { enabled = !enabled })
+            }
         }
-        BottomNav(active = NavTab.Safety, onTab = onTabChange)
+        Box(modifier = Modifier.align(Alignment.BottomCenter)) {
+            BottomNav(active = NavTab.Safety, onTab = onTabChange)
+        }
     }
 }
 

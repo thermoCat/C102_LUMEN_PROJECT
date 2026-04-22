@@ -24,6 +24,7 @@ import com.ssafy.smartcane.ui.screen.RouteScreen
 import com.ssafy.smartcane.ui.screen.SafetyScreen
 import com.ssafy.smartcane.ui.screen.SearchScreen
 import com.ssafy.smartcane.ui.theme.NavBg
+import com.ssafy.smartcane.ui.theme.NavBarBg
 import com.ssafy.smartcane.viewmodel.NavigationViewModel
 
 @Composable
@@ -33,7 +34,7 @@ fun NavigationScreen(viewModel: NavigationViewModel) {
     var safetyEnabled by remember { mutableStateOf(false) }
     val screenBackground = when {
         tab == NavTab.Safety && safetyEnabled -> Color(0xFF001B2B)
-        tab == NavTab.Safety -> Color(0xFF3A3A3A)
+        tab == NavTab.Safety -> NavBarBg
         else -> NavBg
     }
     val view = LocalView.current

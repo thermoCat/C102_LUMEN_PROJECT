@@ -28,16 +28,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -47,7 +44,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,17 +66,17 @@ import androidx.core.content.ContextCompat
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.data.model.FavItem
 import com.ssafy.smartcane.data.model.SearchResult
-import com.ssafy.smartcane.network.JusoAddressService
+import com.ssafy.smartcane.network.KakaoLocalSearchService
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.component.NavBtn
 import com.ssafy.smartcane.ui.theme.AppWhite
 import com.ssafy.smartcane.ui.theme.NavBg
 import com.ssafy.smartcane.ui.theme.NavBg2
+import com.ssafy.smartcane.ui.theme.NavBarBg
 import com.ssafy.smartcane.ui.theme.NavDivider
 import com.ssafy.smartcane.ui.theme.NavGray
 import com.ssafy.smartcane.ui.theme.NavLightGray
-import com.ssafy.smartcane.ui.theme.NavRed
 import com.ssafy.smartcane.ui.theme.NavYellow
 import kotlin.random.Random
 
@@ -92,7 +88,7 @@ private fun SpeechRecognizerEffect(
     startToken: Int,
     onReady: () -> Unit,
     onResult: (String) -> Unit,
-    onError: () -> Unit
+    onError: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val recognizer = remember {
@@ -125,12 +121,12 @@ private fun SpeechRecognizerEffect(
                 if (!spokenText.isNullOrEmpty()) {
                     onResultState.value(spokenText)
                 } else {
-                    onErrorState.value()
+                    onErrorState.value(SpeechRecognizer.ERROR_NO_MATCH)
                 }
             }
 
             override fun onError(error: Int) {
-                onErrorState.value()
+                onErrorState.value(error)
             }
 
             override fun onBeginningOfSpeech() = Unit
@@ -173,7 +169,7 @@ fun SearchScreen(
     onTabChange: (NavTab) -> Unit
 ) {
     val context = LocalContext.current
-    val jusoAddressService = remember { JusoAddressService() }
+    val kakaoLocalSearchService = remember { KakaoLocalSearchService() }
     var sub by remember { mutableStateOf(SearchSub.Main) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<SearchResult>()) }
@@ -238,16 +234,16 @@ fun SearchScreen(
 
         kotlinx.coroutines.delay(300)
 
-        val addresses = jusoAddressService.search(keyword = keyword)
-        results = addresses.mapIndexed { index, address ->
+        val places = kakaoLocalSearchService.search(keyword = keyword)
+        results = places.mapIndexed { index, place ->
             SearchResult(
-                id = (address.roadAddress + address.jibunAddress + address.zipCode).hashCode() + index,
-                name = address.roadAddress,
-                addr = address.jibunAddress.ifBlank {
-                    if (address.zipCode.isBlank()) address.roadAddress else "우편번호 ${address.zipCode}"
+                id = (place.placeName + place.roadAddressName + place.addressName).hashCode() + index,
+                name = place.placeName,
+                addr = place.roadAddressName.ifBlank {
+                    place.addressName
                 },
                 starred = favorites.any { fav ->
-                    fav.name == address.roadAddress || fav.addr == address.jibunAddress
+                    fav.name == place.placeName || fav.addr == place.roadAddressName || fav.addr == place.addressName
                 }
             )
         }
@@ -261,8 +257,16 @@ fun SearchScreen(
             query = spokenText
             sub = SearchSub.Results
         },
-        onError = {
-            sub = SearchSub.Main
+        onError = { error ->
+            sub = when (error) {
+                SpeechRecognizer.ERROR_NETWORK,
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+                SpeechRecognizer.ERROR_SERVER,
+                SpeechRecognizer.ERROR_NO_MATCH,
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> SearchSub.Results
+
+                else -> SearchSub.Main
+            }
         }
     )
 
@@ -314,7 +318,7 @@ private fun SearchBrowseView(
     onTabChange: (NavTab) -> Unit
 ) {
     val topPadding by animateDpAsState(
-        targetValue = if (inResults) 12.dp else 22.dp,
+        targetValue = if (inResults) 12.dp else 64.dp,
         animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
         label = "searchTopPadding"
     )
@@ -362,6 +366,7 @@ private fun SearchBrowseView(
                 }
             }
 
+            Column(modifier = Modifier.padding(horizontal = if (inResults) 0.dp else 10.dp)) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
@@ -397,7 +402,15 @@ private fun SearchBrowseView(
                                 color = AppWhite,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
-                            )
+                            ),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    innerTextField()
+                                }
+                            }
                         )
                     } else {
                         Text(
@@ -453,7 +466,7 @@ private fun SearchBrowseView(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, NavDivider, RoundedCornerShape(12.dp))
+                                .border(0.5.dp, NavDivider, RoundedCornerShape(12.dp))
                                 .clickable(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
@@ -462,14 +475,16 @@ private fun SearchBrowseView(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = result.name,
                                     color = AppWhite,
                                     fontSize = 24.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Box(
@@ -491,14 +506,14 @@ private fun SearchBrowseView(
                                     )
                                 }
                             }
-                            HorizontalDivider(color = NavDivider, thickness = 1.dp)
+                            HorizontalDivider(color = NavDivider, thickness = 0.5.dp)
                             Text(
                                 text = result.addr,
                                 color = NavLightGray,
-                                fontSize = 13.sp,
+                                fontSize = 14.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
                         }
                     }
@@ -516,12 +531,14 @@ private fun SearchBrowseView(
                     )
                 }
             }
+            }
         }
 
         BottomNav(active = NavTab.Search, onTab = onTabChange)
     }
 }
 
+/*
 @Composable
 private fun SearchHeaderContent() {
     Column {
@@ -534,7 +551,7 @@ private fun SearchHeaderContent() {
         Spacer(Modifier.height(6.dp))
         Text(
             text = "직접 입력하거나 음성으로 검색하세요",
-            color = NavGray,
+            color = AppWhite,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium
         )
@@ -593,7 +610,7 @@ private fun SearchBar(
             } else {
                 Text(
                     text = "도로명 주소로 검색해주세요",
-                    color = NavGray,
+                    color = AppWhite,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Normal
                 )
@@ -686,7 +703,7 @@ private fun StickySearchBrowseView(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, NavDivider, RoundedCornerShape(12.dp))
+                                .border(0.5.dp, NavDivider, RoundedCornerShape(12.dp))
                                 .clickable(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
@@ -724,11 +741,12 @@ private fun StickySearchBrowseView(
                                     )
                                 }
                             }
-                            HorizontalDivider(color = NavDivider, thickness = 1.dp)
+                            HorizontalDivider(color = NavDivider, thickness = 0.5.dp)
                             Text(
                                 text = result.addr,
-                                color = NavLightGray,
-                                fontSize = 13.sp,
+                                color = AppWhite,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Medium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
@@ -787,6 +805,7 @@ private fun StickySearchBrowseView(
     }
 }
 
+*/
 @Composable
 private fun VoiceOverlay(
     listening: Boolean,
@@ -825,7 +844,7 @@ private fun VoiceOverlay(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF3A3A3A))
+            .background(NavBarBg)
     ) {
         Box(
             modifier = Modifier

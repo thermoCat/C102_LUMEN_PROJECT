@@ -17,7 +17,7 @@ fun localOrGradleProperty(name: String): String =
         ?: providers.gradleProperty(name).orNull
         ?: ""
 
-val jusoApiKey = localOrGradleProperty("JUSO_API_KEY")
+val kakaoRestApiKey = localOrGradleProperty("KAKAO_REST_API_KEY")
 
 android {
     namespace = "com.ssafy.smartcane"
@@ -33,7 +33,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "JUSO_API_KEY", "\"$jusoApiKey\"")
+        buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoRestApiKey\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

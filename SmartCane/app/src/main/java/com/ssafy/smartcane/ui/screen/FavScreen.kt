@@ -108,7 +108,7 @@ private fun FavListView(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(top = 22.dp)
+                .padding(top = 64.dp)
         ) {
             Text(
                 text = "즐겨찾기 목록",
@@ -117,6 +117,7 @@ private fun FavListView(
                 fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.padding(horizontal = 20.dp)
             )
+            Column(modifier = Modifier.padding(horizontal = 10.dp)) {
             if (favorites.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -162,6 +163,7 @@ private fun FavListView(
                         )
                     }
                 }
+            }
             }
         }
         BottomNav(active = NavTab.Fav, onTab = onTabChange)
