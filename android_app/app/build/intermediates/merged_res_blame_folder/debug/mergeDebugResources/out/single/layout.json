@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.ssafy.trafficlightstandalone.integrated.app-mergeDebugResources-46:/layout/dialog_settings.xml",
+        "source": "com.ssafy.trafficlightstandalone.integrated.app-main-49:/layout/dialog_settings.xml"
+    },
+    {
+        "merged": "com.ssafy.trafficlightstandalone.integrated.app-mergeDebugResources-46:/layout/activity_main.xml",
+        "source": "com.ssafy.trafficlightstandalone.integrated.app-main-49:/layout/activity_main.xml"
+    }
+]

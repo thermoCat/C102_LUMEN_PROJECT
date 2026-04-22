@@ -1,0 +1,7 @@
+com.ssafy.trafficlightstandalone.integrated.app-pngs-0 C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\build\generated\res\pngs\release
+com.ssafy.trafficlightstandalone.integrated.app-updated_navigation_xml-1 C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\build\generated\updated_navigation_xml\release
+com.ssafy.trafficlightstandalone.integrated.app-packageReleaseResources-2 C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\build\intermediates\incremental\release\packageReleaseResources\merged.dir
+com.ssafy.trafficlightstandalone.integrated.app-packageReleaseResources-3 C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\build\intermediates\incremental\release\packageReleaseResources\stripped.dir
+com.ssafy.trafficlightstandalone.integrated.app-release-4 C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\build\intermediates\merged_res\release\mergeReleaseResources
+com.ssafy.trafficlightstandalone.integrated.app-main-5 C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\res
+com.ssafy.trafficlightstandalone.integrated.app-release-6 C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\release\res

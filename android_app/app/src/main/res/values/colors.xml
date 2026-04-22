@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="traffic_background">#0B0D0F</color>
+    <color name="traffic_surface">#141B1F</color>
+    <color name="traffic_accent">#F59E0B</color>
+</resources>

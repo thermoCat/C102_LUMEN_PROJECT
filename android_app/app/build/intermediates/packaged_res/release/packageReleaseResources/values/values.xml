@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="traffic_accent">#F59E0B</color>
+    <color name="traffic_background">#0B0D0F</color>
+    <color name="traffic_surface">#141B1F</color>
+    <string name="app_name">신호등 통합 감지</string>
+    <string name="app_name_standalone">TrafficLight Standalone</string>
+    <string name="ble_status_enable_bluetooth">BLE: 블루투스를 활성화해 주세요</string>
+    <string name="ble_status_idle">BLE: 비활성 (설정에서 활성화)</string>
+    <string name="ble_status_permission_required">BLE: 블루투스 권한이 필요합니다</string>
+    <string name="ble_status_unsupported">BLE: 이 기기에서 지원되지 않습니다</string>
+    <string name="detail_detection_perf_template">%1$s | 파이프라인 %2$d ms | 평균 %3$.1f ms</string>
+    <string name="detail_initializing">LiteRT 런타임, 카메라, 신호등 감지기를 초기화하는 중입니다.</string>
+    <string name="detail_no_detection_perf_template">감지 없음. 피크 점수: %1$d%% | 파이프라인 %2$d ms</string>
+    <string name="detail_permission_required">카메라 권한을 허용하고 앱을 다시 실행하세요.</string>
+    <string name="detail_waiting_for_frame">첫 번째 프레임을 기다리는 중입니다.</string>
+    <string name="digital_zoom_label">%.1fx</string>
+    <string name="settings_apply">적용</string>
+    <string name="settings_ble">ESP32 BLE 통신</string>
+    <string name="settings_ble_desc">감지 결과를 ESP32 장치로 무선 전송합니다 (G/R/N)</string>
+    <string name="settings_cancel">취소</string>
+    <string name="settings_model">모델 선택</string>
+    <string name="settings_title">설정</string>
+    <string name="settings_top_crop">ROI 크롭 비율 (30%–90%)</string>
+    <string name="settings_top_crop_desc">2-Pass 시 상단에서 얼마나 크롭할지 결정합니다</string>
+    <string name="settings_two_pass">2-Pass 파이프라인</string>
+    <string name="settings_two_pass_desc">상단 60% 크롭 2차 추론으로 원거리 신호등 감지 강화</string>
+    <string name="stat_inference_fps">추론 FPS: %1$.1f</string>
+    <string name="stat_inference_ms">추론: %1$d ms</string>
+    <string name="stat_output_fps">출력 FPS: %1$.1f</string>
+    <string name="status_camera_ready">카메라 준비 완료</string>
+    <string name="status_detection_perf_template">감지 %1$d개 | 추론 %2$d ms (%3$.1f FPS) | 출력 %4$.1f FPS</string>
+    <string name="status_error">파이프라인 오류</string>
+    <string name="status_loading_model">모델 로딩 중…</string>
+    <string name="status_permission_required">카메라 권한이 필요합니다</string>
+    <style name="Theme.TrafficLightStandaloneIntegrated" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorBackground">@color/traffic_background</item>
+        <item name="android:windowBackground">@color/traffic_background</item>
+    </style>
+</resources>
