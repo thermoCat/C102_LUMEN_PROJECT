@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import com.ssafy.smartcane.ble.BleNusManager
 import com.ssafy.smartcane.ui.NavigationScreen
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
 
         val navigationViewModel = ViewModelProvider(this)[NavigationViewModel::class.java]
         val bleNusManager = BleNusManager(applicationContext)

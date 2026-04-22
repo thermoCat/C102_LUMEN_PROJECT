@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.ui.NavTab
+import com.ssafy.smartcane.ui.theme.AppWhite
 import com.ssafy.smartcane.ui.theme.NavBarBg
-import com.ssafy.smartcane.ui.theme.NavLightGray
 import com.ssafy.smartcane.ui.theme.NavYellow
 
 @Composable
@@ -73,14 +73,14 @@ fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
                         painter = painterResource(item.iconRes),
                         contentDescription = null,
                         modifier = Modifier.size(30.dp),
-                        tint = if (isActive) NavYellow else NavLightGray
+                        tint = if (isActive) NavYellow else AppWhite
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = item.label,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (isActive) NavYellow else NavLightGray
+                        color = if (isActive) NavYellow else AppWhite
                     )
                 }
             }

@@ -1,7 +1,23 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+val localProperties = Properties().apply {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { load(it) }
+    }
+}
+
+fun localOrGradleProperty(name: String): String =
+    localProperties.getProperty(name)
+        ?: providers.gradleProperty(name).orNull
+        ?: ""
+
+val jusoApiKey = localOrGradleProperty("JUSO_API_KEY")
 
 android {
     namespace = "com.ssafy.smartcane"
@@ -17,6 +33,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "JUSO_API_KEY", "\"$jusoApiKey\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -36,6 +53,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

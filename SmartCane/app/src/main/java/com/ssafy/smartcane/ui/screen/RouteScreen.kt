@@ -44,6 +44,7 @@ import com.ssafy.smartcane.R
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.component.NavBtn
+import com.ssafy.smartcane.ui.theme.AppWhite
 import com.ssafy.smartcane.ui.theme.NavBg
 import com.ssafy.smartcane.ui.theme.NavDivider
 import com.ssafy.smartcane.ui.theme.NavGreen
@@ -98,8 +99,8 @@ private fun RouteMainView(
         ) {
             Text(
                 text = "경로 탐색",
-                color = Color.White,
-                fontSize = 28.sp,
+                color = AppWhite,
+                fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold
             )
             Spacer(Modifier.height(38.dp))
@@ -142,7 +143,7 @@ private fun RouteInfoRow(label: String, value: String) {
         )
         Text(
             text = value,
-            color = Color.White,
+            color = AppWhite,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -166,14 +167,14 @@ private fun SimpleRouteView(destName: String, onDone: () -> Unit) {
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text(
                     text = "경로 안내",
-                    color = Color.White,
+                    color = AppWhite,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
             Text(
                 text = "완료",
-                color = Color.White,
+                color = AppWhite,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.clickable(onClick = onDone)
@@ -186,11 +187,16 @@ private fun SimpleRouteView(destName: String, onDone: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PinIcon()
+            Icon(
+                painter = painterResource(R.drawable.ic_route_destination),
+                contentDescription = null,
+                tint = Color.Unspecified,
+                modifier = Modifier.size(38.dp, 52.dp)
+            )
             Spacer(Modifier.width(22.dp))
             Text(
                 text = destName,
-                color = Color.White,
+                color = AppWhite,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.ExtraBold
             )
@@ -202,11 +208,16 @@ private fun SimpleRouteView(destName: String, onDone: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 28.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ArrowIcon()
+            Icon(
+                painter = painterResource(R.drawable.ic_route_straight),
+                contentDescription = null,
+                tint = Color.Unspecified,
+                modifier = Modifier.size(40.dp, 54.dp)
+            )
             Spacer(Modifier.width(26.dp))
             Text(
                 text = "보행자도로를 따라\n154m 이동",
-                color = Color.White,
+                color = AppWhite,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 lineHeight = 31.sp
@@ -230,11 +241,16 @@ private fun MapNavView(destName: String, onStop: () -> Unit) {
                 .padding(horizontal = 22.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PinIcon()
+            Icon(
+                painter = painterResource(R.drawable.ic_route_destination),
+                contentDescription = null,
+                tint = Color.Unspecified,
+                modifier = Modifier.size(38.dp, 52.dp)
+            )
             Spacer(Modifier.width(18.dp))
             Text(
                 text = destName,
-                color = Color.White,
+                color = AppWhite,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.ExtraBold
             )
@@ -251,7 +267,7 @@ private fun MapNavView(destName: String, onStop: () -> Unit) {
                         .padding(horizontal = 5.dp)
                         .size(if (index == 0) 9.dp else 7.dp)
                         .background(
-                            color = if (index == 0) Color.White else Color(0xFF5D5D5D),
+                            color = if (index == 0) AppWhite else Color(0xFF5D5D5D),
                             shape = CircleShape
                         )
                 )
@@ -302,10 +318,10 @@ private fun MapNavView(destName: String, onStop: () -> Unit) {
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 8f))
                     )
                 )
-                drawCircle(Color.White, radius = 10f, center = Offset(w * 0.95f, h * 0.08f))
+                drawCircle(AppWhite, radius = 10f, center = Offset(w * 0.95f, h * 0.08f))
                 drawCircle(Color(0xFF2D67E3), radius = 6f, center = Offset(w * 0.95f, h * 0.08f))
                 drawCircle(NavGreen, radius = 14f, center = Offset(w * 0.23f, h * 0.74f))
-                drawCircle(Color.White, radius = 7f, center = Offset(w * 0.23f, h * 0.74f))
+                drawCircle(AppWhite, radius = 7f, center = Offset(w * 0.23f, h * 0.74f))
             }
         }
         Row(
@@ -333,7 +349,7 @@ private fun MapNavView(destName: String, onStop: () -> Unit) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = "현 위치 확인",
-                    color = Color.White,
+                    color = AppWhite,
                     fontSize = 12.sp
                 )
             }
@@ -345,28 +361,5 @@ private fun MapNavView(destName: String, onStop: () -> Unit) {
                 modifier = Modifier.weight(1f)
             )
         }
-    }
-}
-
-@Composable
-private fun PinIcon() {
-    Canvas(modifier = Modifier.size(38.dp, 52.dp)) {
-        val path = Path().apply {
-            moveTo(size.width / 2f, size.height)
-            cubicTo(-2f, size.height * 0.70f, 0f, size.height * 0.18f, size.width / 2f, size.height * 0.02f)
-            cubicTo(size.width, size.height * 0.18f, size.width + 2f, size.height * 0.70f, size.width / 2f, size.height)
-            close()
-        }
-        drawPath(path, NavGreen)
-        drawCircle(Color(0xFF151515), radius = size.width * 0.16f, center = Offset(size.width / 2f, size.height * 0.34f))
-    }
-}
-
-@Composable
-private fun ArrowIcon() {
-    Canvas(modifier = Modifier.size(40.dp, 54.dp)) {
-        drawLine(Color.White, Offset(size.width / 2f, size.height * 0.92f), Offset(size.width / 2f, size.height * 0.14f), 6f, cap = StrokeCap.Round)
-        drawLine(Color.White, Offset(size.width / 2f, size.height * 0.14f), Offset(size.width * 0.12f, size.height * 0.42f), 6f, cap = StrokeCap.Round)
-        drawLine(Color.White, Offset(size.width / 2f, size.height * 0.14f), Offset(size.width * 0.88f, size.height * 0.42f), 6f, cap = StrokeCap.Round)
     }
 }

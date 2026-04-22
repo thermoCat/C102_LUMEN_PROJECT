@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ssafy.smartcane.ble.BleNusManager
+import com.ssafy.smartcane.ui.theme.AppWhite
 
 @Composable
 fun BleTestScreen(bleManager: BleNusManager) {
@@ -107,7 +108,7 @@ fun BleTestScreen(bleManager: BleNusManager) {
                 text = "ESP32 BLE 진동 테스트",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = AppWhite
             )
 
             Spacer(Modifier.height(12.dp))
@@ -313,7 +314,7 @@ private fun CmdButton(
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             lineHeight = 16.sp,
-            color = if (enabled) Color.White else Color.White.copy(alpha = 0.4f)
+            color = if (enabled) AppWhite else AppWhite.copy(alpha = 0.4f)
         )
     }
 }

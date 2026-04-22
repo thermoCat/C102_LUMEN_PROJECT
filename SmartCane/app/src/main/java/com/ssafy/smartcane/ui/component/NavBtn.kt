@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ssafy.smartcane.ui.theme.NavDivider
 import com.ssafy.smartcane.ui.theme.NavYellow
 
 @Composable
@@ -28,21 +28,27 @@ fun NavBtn(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgColor   = if (filled) NavYellow else Color.Transparent
-    val textColor = if (filled) Color.Black else Color.White
-    val fontSize  = if (big) 22.sp else 18.sp
-    val vPad      = if (big) 20.dp else 17.dp
+    val shape = RoundedCornerShape(20.dp)
+    val bgColor = if (filled) NavYellow else Color.Transparent
+    val textColor = if (filled) Color(0xFF151515) else NavYellow
+    val fontSize = if (big) 20.sp else 17.sp
+    val verticalPadding = if (big) 18.dp else 15.dp
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(shape)
             .background(bgColor)
-            .then(if (outlined) Modifier.border(2.dp, Color.White, RoundedCornerShape(14.dp)) else Modifier)
+            .then(if (outlined) Modifier.border(1.5.dp, NavDivider, shape) else Modifier)
             .clickable(onClick = onClick)
-            .padding(vertical = vPad),
+            .padding(vertical = verticalPadding),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, color = textColor, fontSize = fontSize, fontWeight = FontWeight.Bold)
+        Text(
+            text = label,
+            color = textColor,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Bold
+        )
     }
 }

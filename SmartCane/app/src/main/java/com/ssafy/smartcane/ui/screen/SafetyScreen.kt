@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,14 +32,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
+import com.ssafy.smartcane.ui.theme.AppWhite
 
 private val SafetyAccent = Color(0xFF005387)
 private val SafetyBackground = Color(0xFF001B2B)
 
 @Composable
-fun SafetyScreen(onTabChange: (NavTab) -> Unit) {
+fun SafetyScreen(
+    onTabChange: (NavTab) -> Unit,
+    onEnabledChange: (Boolean) -> Unit
+) {
     var enabled by remember { mutableStateOf(false) }
     val background = if (enabled) SafetyBackground else Color(0xFF3A3A3A)
+
+    LaunchedEffect(enabled) {
+        onEnabledChange(enabled)
+    }
 
     Column(
         modifier = Modifier
@@ -69,7 +78,7 @@ private fun SafetyStatusText(enabled: Boolean) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = if (enabled) "안전 보행 모드가 가동 중입니다." else "안전 보행 모드가 비활성 상태입니다.",
-            color = Color.White,
+            color = AppWhite,
             fontSize = 22.sp,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center,
@@ -80,7 +89,7 @@ private fun SafetyStatusText(enabled: Boolean) {
         Text(
             text = if (enabled) "버튼을 누르면 안전 보행이 종료됩니다." else "버튼을 눌러 안전 보행을 활성화하세요.",
             color = Color(0xFFD2D2D2),
-            fontSize = 15.sp,
+            fontSize = 16.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
@@ -128,7 +137,7 @@ private fun SafetyActionButton(enabled: Boolean, onClick: () -> Unit) {
         ) {
             Text(
                 text = if (enabled) "안전 보행 끄기" else "안전 보행 켜기",
-                color = if (enabled) Color.White else Color(0xFFA7A7A7),
+                color = if (enabled) AppWhite else Color(0xFFA7A7A7),
                 fontSize = 26.sp,
                 fontWeight = FontWeight.ExtraBold
             )
@@ -149,7 +158,7 @@ private fun SafetySwitch(enabled: Boolean, onToggle: () -> Unit) {
             .size(width = 68.dp, height = 34.dp)
             .background(if (enabled) SafetyAccent else Color(0xFF222222), RoundedCornerShape(17.dp))
             .clickable(onClick = onToggle)
-            .padding(horizontal = 5.dp),
+            .padding(horizontal = 4.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         Box(
