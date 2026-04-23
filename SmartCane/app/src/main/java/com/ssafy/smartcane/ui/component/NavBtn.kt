@@ -28,10 +28,10 @@ fun NavBtn(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(30.dp)
     val bgColor = if (filled) NavYellow else Color.Transparent
     val textColor = if (filled) Color(0xFF151515) else NavYellow
-    val fontSize = if (big) 20.sp else 17.sp
+    val fontSize = if (big) 24.sp else 17.sp
     val verticalPadding = if (big) 18.dp else 15.dp
 
     Box(

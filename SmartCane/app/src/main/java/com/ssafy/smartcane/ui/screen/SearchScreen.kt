@@ -93,7 +93,7 @@ private fun SpeechRecognizerEffect(
     val context = LocalContext.current
     val recognizer = remember {
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            SpeechRecognizer.createSpeechRecognizer(context)
+            runCatching { SpeechRecognizer.createSpeechRecognizer(context) }.getOrNull()
         } else {
             null
         }
@@ -139,26 +139,27 @@ private fun SpeechRecognizerEffect(
 
         recognizer.setRecognitionListener(listener)
         onDispose {
-            recognizer.cancel()
-            recognizer.destroy()
+            runCatching { recognizer.cancel() }
+            runCatching { recognizer.destroy() }
         }
     }
 
     LaunchedEffect(active, startToken, recognizer) {
         if (recognizer == null) return@LaunchedEffect
         if (!active) {
-            recognizer.cancel()
+            runCatching { recognizer.cancel() }
             return@LaunchedEffect
         }
 
-        recognizer.cancel()
+        runCatching { recognizer.cancel() }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "음성으로 검색")
         }
-        recognizer.startListening(intent)
+        runCatching { recognizer.startListening(intent) }
+            .onFailure { onErrorState.value(SpeechRecognizer.ERROR_CLIENT) }
     }
 }
 
@@ -262,6 +263,8 @@ fun SearchScreen(
                 SpeechRecognizer.ERROR_NETWORK,
                 SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
                 SpeechRecognizer.ERROR_SERVER,
+                SpeechRecognizer.ERROR_CLIENT,
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
                 SpeechRecognizer.ERROR_NO_MATCH,
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> SearchSub.Results
 
@@ -352,8 +355,8 @@ private fun SearchBrowseView(
                     Text(
                         text = "위치 검색",
                         color = AppWhite,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.ExtraBold
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(

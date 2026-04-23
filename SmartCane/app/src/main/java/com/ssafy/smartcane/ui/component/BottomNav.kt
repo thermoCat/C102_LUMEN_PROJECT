@@ -3,13 +3,9 @@ package com.ssafy.smartcane.ui.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,16 +45,15 @@ fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(66.dp)
                 .padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
             items.forEach { item ->
                 val isActive = active == item.tab
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
+                        .padding(top = 4.dp, bottom = 20.dp)
                         .clearAndSetSemantics {
                             contentDescription = if (isActive) "메뉴바 ${item.label} 선택됨" else "메뉴바 ${item.label}"
                         }
@@ -67,7 +62,6 @@ fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
                             interactionSource = remember { MutableInteractionSource() }
                         ) { onTab(item.tab) },
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
                         painter = painterResource(item.iconRes),
@@ -75,10 +69,8 @@ fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
                         modifier = Modifier.size(30.dp),
                         tint = if (isActive) NavYellow else AppWhite
                     )
-                    Spacer(modifier = Modifier.height(0.dp))
                     Text(
                         text = item.label,
-                        modifier = Modifier.padding(bottom = 10.dp),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Normal,
                         color = if (isActive) NavYellow else AppWhite

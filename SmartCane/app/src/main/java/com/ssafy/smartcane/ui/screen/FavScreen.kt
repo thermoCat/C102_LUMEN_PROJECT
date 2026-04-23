@@ -50,6 +50,13 @@ fun FavScreen(
     var selected by remember { mutableStateOf<FavItem?>(null) }
     var editName by remember { mutableStateOf("") }
 
+    fun saveEditedFavorite(current: FavItem) {
+        val sanitizedName = editName.take(12)
+        onFavChange(favorites.map { if (it.id == current.id) it.copy(name = sanitizedName) else it })
+        selected = current.copy(name = sanitizedName)
+        editName = sanitizedName
+    }
+
     when (sub) {
         FavSub.List -> FavListView(
             favorites = favorites,
@@ -73,7 +80,8 @@ fun FavScreen(
                     editName = item.name
                     sub = FavSub.Rename
                 },
-                onBack = { sub = FavSub.List }
+                onBack = { sub = FavSub.List },
+                onTabChange = onTabChange
             )
         }
 
@@ -83,11 +91,14 @@ fun FavScreen(
                 editName = editName,
                 onNameChange = { editName = it },
                 onSave = {
-                    onFavChange(favorites.map { if (it.id == item.id) it.copy(name = editName) else it })
-                    selected = item.copy(name = editName)
+                    saveEditedFavorite(item)
                     sub = FavSub.Detail
                 },
-                onBack = { sub = FavSub.Detail }
+                onTabChange = { tab ->
+                    saveEditedFavorite(item)
+                    sub = FavSub.Detail
+                    if (tab != NavTab.Fav) onTabChange(tab)
+                }
             )
         }
     }
@@ -113,8 +124,8 @@ private fun FavListView(
             Text(
                 text = "즐겨찾기 목록",
                 color = AppWhite,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 36.sp,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 20.dp)
             )
             Column(modifier = Modifier.padding(horizontal = 10.dp)) {
@@ -146,14 +157,17 @@ private fun FavListView(
                             Text(
                                 text = item.addr,
                                 color = NavGray,
-                                fontSize = 13.sp
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Normal,
+                                modifier = Modifier.padding(horizontal = 10.dp)
                             )
-                            Spacer(Modifier.height(3.dp))
                             Text(
-                                text = item.name,
+                                text = item.name.take(12),
                                 color = AppWhite,
                                 fontSize = 23.sp,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 10.dp)
                             )
                         }
                         HorizontalDivider(
@@ -176,7 +190,8 @@ private fun FavDetailView(
     onSetDest: () -> Unit,
     onDelete: () -> Unit,
     onRename: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onTabChange: (NavTab) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -195,8 +210,8 @@ private fun FavDetailView(
             Text(
                 text = item.name,
                 color = AppWhite,
-                fontSize = 36.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(6.dp))
@@ -217,7 +232,7 @@ private fun FavDetailView(
             }
             Spacer(Modifier.weight(1f))
         }
-        BottomNav(active = NavTab.Fav, onTab = {})
+        BottomNav(active = NavTab.Fav, onTab = onTabChange)
     }
 }
 
@@ -227,14 +242,13 @@ private fun FavRenameView(
     editName: String,
     onNameChange: (String) -> Unit,
     onSave: () -> Unit,
-    onBack: () -> Unit
+    onTabChange: (NavTab) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(NavBg)
     ) {
-        BackBtn(onClick = onBack)
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -245,10 +259,10 @@ private fun FavRenameView(
             Spacer(Modifier.height(88.dp))
             BasicTextField(
                 value = editName,
-                onValueChange = onNameChange,
+                onValueChange = { onNameChange(it.take(12)) },
                 textStyle = TextStyle(
                     color = AppWhite,
-                    fontSize = 34.sp,
+                    fontSize = 32.sp,
                     fontWeight = FontWeight.ExtraBold,
                     textAlign = TextAlign.Center
                 ),
@@ -271,6 +285,6 @@ private fun FavRenameView(
             NavBtn("변경 완료", filled = true, big = true, onClick = onSave)
             Spacer(Modifier.weight(1f))
         }
-        BottomNav(active = NavTab.Fav, onTab = {})
+        BottomNav(active = NavTab.Fav, onTab = onTabChange)
     }
 }

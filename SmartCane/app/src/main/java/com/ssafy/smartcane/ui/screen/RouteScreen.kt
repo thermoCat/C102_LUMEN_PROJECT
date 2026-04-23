@@ -100,8 +100,8 @@ private fun RouteMainView(
             Text(
                 text = "경로 탐색",
                 color = AppWhite,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold
+                fontSize = 36.sp,
+                fontWeight = FontWeight.SemiBold
             )
             Column(modifier = Modifier.padding(horizontal = 10.dp)) {
             Spacer(Modifier.height(40.dp))
