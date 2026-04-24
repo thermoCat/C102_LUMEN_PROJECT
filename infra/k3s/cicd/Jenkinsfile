@@ -1,0 +1,77 @@
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        PROJECT_NAME = 'S14P31C102'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Repository Check') {
+            steps {
+                sh '''
+                    set -eu
+                    echo "Project: ${PROJECT_NAME}"
+                    echo "Branch: ${BRANCH_NAME:-unknown}"
+                    echo "Workspace: $(pwd)"
+                    echo "Top-level files:"
+                    ls -la
+                '''
+            }
+        }
+
+        stage('Validate Required Files') {
+            steps {
+                sh '''
+                    set -eu
+
+                    test -f README.MD
+                    test -f infra/k3s/cicd/jenkins-values.yaml
+                    test -f infra/k3s/cicd/README.md
+                    test -f infra/k3s/cicd/Jenkinsfile
+
+                    echo "Required repository files are present."
+                '''
+            }
+        }
+
+        stage('Show CI Targets') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "Current repository does not yet contain app build sources."
+                    echo "This pipeline is acting as a bootstrap CI check."
+                    echo "When backend/app code is added, extend this Jenkinsfile with:"
+                    echo "  - test stage"
+                    echo "  - build stage"
+                    echo "  - image publish stage"
+                    echo "  - k3s deploy stage"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Bootstrap pipeline completed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed. Check the stage logs above.'
+        }
+        always {
+            cleanWs(deleteDirs: true, disableDeferredWipeout: true)
+        }
+    }
+}
