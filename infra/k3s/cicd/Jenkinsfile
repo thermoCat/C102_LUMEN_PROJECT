@@ -3,7 +3,6 @@ pipeline {
 
     options {
         disableConcurrentBuilds()
-        timestamps()
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
