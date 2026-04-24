@@ -3,11 +3,14 @@ package com.ssafy.trafficlightstandalone.integrated.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import com.ssafy.trafficlightstandalone.integrated.model.Detection
+import com.ssafy.trafficlightstandalone.integrated.model.TrafficLightRoi
+import com.ssafy.trafficlightstandalone.integrated.model.TrafficLightRoiSource
 import kotlin.math.absoluteValue
 import kotlin.math.min
 
@@ -18,10 +21,17 @@ class DetectionOverlayView @JvmOverloads constructor(
     private var detections: List<Detection> = emptyList()
     private var sourceWidth: Int = 0
     private var sourceHeight: Int = 0
+    private var trafficLightRoi: TrafficLightRoi? = null
+    private var trafficLightRoiSource: TrafficLightRoiSource = TrafficLightRoiSource.NONE
 
     private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 6f
+    }
+    private val roiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 5f
+        pathEffect = DashPathEffect(floatArrayOf(18f, 12f), 0f)
     }
     private val textBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -32,10 +42,18 @@ class DetectionOverlayView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    fun setResult(detections: List<Detection>, sourceWidth: Int, sourceHeight: Int) {
+    fun setResult(
+        detections: List<Detection>,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        trafficLightRoi: TrafficLightRoi?,
+        trafficLightRoiSource: TrafficLightRoiSource,
+    ) {
         this.detections = detections
         this.sourceWidth = sourceWidth
         this.sourceHeight = sourceHeight
+        this.trafficLightRoi = trafficLightRoi
+        this.trafficLightRoiSource = trafficLightRoiSource
         postInvalidateOnAnimation()
     }
 
@@ -46,6 +64,29 @@ class DetectionOverlayView @JvmOverloads constructor(
         val scale = min(width / sourceWidth.toFloat(), height / sourceHeight.toFloat())
         val offsetX = (width - sourceWidth * scale) / 2f
         val offsetY = (height - sourceHeight * scale) / 2f
+
+        trafficLightRoi?.let { roi ->
+            val color = roiColorForSource(trafficLightRoiSource)
+            roiPaint.color = color
+            textBackgroundPaint.color = Color.argb(160, Color.red(color), Color.green(color), Color.blue(color))
+
+            val rect = RectF(
+                offsetX + roi.left * scale,
+                offsetY + roi.top * scale,
+                offsetX + roi.right * scale,
+                offsetY + roi.bottom * scale,
+            )
+            canvas.drawRoundRect(rect, 18f, 18f, roiPaint)
+
+            val label = "ROI ${formatRoiSource(trafficLightRoiSource)}"
+            val textWidth = textPaint.measureText(label)
+            val textHeight = textPaint.textSize + 18f
+            val textLeft = rect.left
+            val textTop = (rect.bottom + 8f).coerceAtMost(height - textHeight)
+            val textRect = RectF(textLeft, textTop, textLeft + textWidth + 28f, textTop + textHeight)
+            canvas.drawRoundRect(textRect, 12f, 12f, textBackgroundPaint)
+            canvas.drawText(label, textRect.left + 14f, textRect.bottom - 14f, textPaint)
+        }
 
         detections.forEach { detection ->
             val color = colorForClass(detection.className)
@@ -71,11 +112,28 @@ class DetectionOverlayView @JvmOverloads constructor(
         }
     }
 
+    private fun roiColorForSource(source: TrafficLightRoiSource): Int = when (source) {
+        TrafficLightRoiSource.PTL -> Color.rgb(245, 158, 11)
+        TrafficLightRoiSource.EXPANDED -> Color.rgb(6, 182, 212)
+        TrafficLightRoiSource.TRACKED -> Color.rgb(148, 163, 184)
+        TrafficLightRoiSource.NONE -> Color.rgb(107, 114, 128)
+    }
+
+    private fun formatRoiSource(source: TrafficLightRoiSource): String = when (source) {
+        TrafficLightRoiSource.PTL -> "PTL"
+        TrafficLightRoiSource.EXPANDED -> "EXP"
+        TrafficLightRoiSource.TRACKED -> "TRACK"
+        TrafficLightRoiSource.NONE -> "NONE"
+    }
+
     private fun colorForClass(className: String): Int = when (className.trim().lowercase()) {
         "crosswalk" -> Color.rgb(59, 130, 246)
         "green_pedestrian_light" -> Color.rgb(34, 197, 94)
+        "green" -> Color.rgb(34, 197, 94)
         "red_pedestrian_light" -> Color.rgb(239, 68, 68)
+        "red" -> Color.rgb(239, 68, 68)
         "pedestrian_traffic_light" -> Color.rgb(245, 158, 11)
+        "pedestrian traffic light" -> Color.rgb(245, 158, 11)
         else -> {
             val palette = listOf(
                 Color.rgb(245, 158, 11), Color.rgb(168, 85, 247),

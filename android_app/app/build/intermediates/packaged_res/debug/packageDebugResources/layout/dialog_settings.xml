@@ -23,20 +23,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/radioYolov8n"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="YOLOv8n (경량 – 빠른 추론)" />
-
-            <RadioButton
-                android:id="@+id/radioYolov8s"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="YOLOv8s (표준 – 높은 정확도)" />
-        </RadioGroup>
+            android:orientation="vertical" />
 
         <View
             android:layout_width="match_parent"

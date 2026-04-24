@@ -5,8 +5,8 @@ package com.ssafy.trafficlightstandalone.integrated;
 
 public final class BuildConfig {
   public static final boolean DEBUG = false;
-  public static final String APPLICATION_ID = "com.ssafy.trafficlightstandalone.integrated";
+  public static final String APPLICATION_ID = "com.ssafy.trafficlightstandalone.integrated.v4blinkstate";
   public static final String BUILD_TYPE = "release";
-  public static final int VERSION_CODE = 1;
-  public static final String VERSION_NAME = "1.0.0";
+  public static final int VERSION_CODE = 2026042304;
+  public static final String VERSION_NAME = "4.20260423.1";
 }

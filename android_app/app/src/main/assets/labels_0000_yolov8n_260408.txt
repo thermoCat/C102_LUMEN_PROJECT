@@ -1,0 +1,3 @@
+pedestrian Traffic Light
+green
+red

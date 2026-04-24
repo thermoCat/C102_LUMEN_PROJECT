@@ -4,7 +4,7 @@
     "type": "COMPATIBLE_SCREEN_MANIFEST",
     "kind": "Directory"
   },
-  "applicationId": "com.ssafy.trafficlightstandalone.integrated",
+  "applicationId": "com.ssafy.trafficlightstandalone.integrated.v4blinkstate",
   "variantName": "release",
   "elements": []
 }

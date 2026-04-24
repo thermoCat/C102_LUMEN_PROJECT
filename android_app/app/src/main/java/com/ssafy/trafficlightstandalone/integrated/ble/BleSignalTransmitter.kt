@@ -14,7 +14,8 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import com.ssafy.trafficlightstandalone.integrated.model.Detection
+import com.ssafy.trafficlightstandalone.integrated.model.InferenceResult
+import com.ssafy.trafficlightstandalone.integrated.model.TrafficLightState
 import java.util.UUID
 
 /**
@@ -63,11 +64,11 @@ class BleSignalTransmitter(
         startScan()
     }
 
-    fun onDetectionsUpdated(detections: List<Detection>) {
-        val signal = when {
-            detections.any { it.className == "green_pedestrian_light" } -> SIGNAL_GREEN
-            detections.any { it.className == "red_pedestrian_light" } -> SIGNAL_RED
-            else -> SIGNAL_NONE
+    fun onInferenceResult(result: InferenceResult) {
+        val signal = when (result.trafficLightState) {
+            TrafficLightState.GREEN -> SIGNAL_GREEN
+            TrafficLightState.RED -> SIGNAL_RED
+            TrafficLightState.NONE -> SIGNAL_NONE
         }
         if (signal != lastSignal) {
             lastSignal = signal

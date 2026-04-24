@@ -4,7 +4,6 @@ package com.ssafy.trafficlightstandalone.integrated.databinding;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -26,12 +25,6 @@ public final class DialogSettingsBinding implements ViewBinding {
   public final RadioGroup radioGroupModel;
 
   @NonNull
-  public final RadioButton radioYolov8n;
-
-  @NonNull
-  public final RadioButton radioYolov8s;
-
-  @NonNull
   public final SeekBar seekBarTopCrop;
 
   @NonNull
@@ -41,12 +34,9 @@ public final class DialogSettingsBinding implements ViewBinding {
   public final Switch switchTwoPass;
 
   private DialogSettingsBinding(@NonNull ScrollView rootView, @NonNull RadioGroup radioGroupModel,
-      @NonNull RadioButton radioYolov8n, @NonNull RadioButton radioYolov8s,
       @NonNull SeekBar seekBarTopCrop, @NonNull Switch switchBle, @NonNull Switch switchTwoPass) {
     this.rootView = rootView;
     this.radioGroupModel = radioGroupModel;
-    this.radioYolov8n = radioYolov8n;
-    this.radioYolov8s = radioYolov8s;
     this.seekBarTopCrop = seekBarTopCrop;
     this.switchBle = switchBle;
     this.switchTwoPass = switchTwoPass;
@@ -85,18 +75,6 @@ public final class DialogSettingsBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.radioYolov8n;
-      RadioButton radioYolov8n = ViewBindings.findChildViewById(rootView, id);
-      if (radioYolov8n == null) {
-        break missingId;
-      }
-
-      id = R.id.radioYolov8s;
-      RadioButton radioYolov8s = ViewBindings.findChildViewById(rootView, id);
-      if (radioYolov8s == null) {
-        break missingId;
-      }
-
       id = R.id.seekBarTopCrop;
       SeekBar seekBarTopCrop = ViewBindings.findChildViewById(rootView, id);
       if (seekBarTopCrop == null) {
@@ -115,8 +93,8 @@ public final class DialogSettingsBinding implements ViewBinding {
         break missingId;
       }
 
-      return new DialogSettingsBinding((ScrollView) rootView, radioGroupModel, radioYolov8n,
-          radioYolov8s, seekBarTopCrop, switchBle, switchTwoPass);
+      return new DialogSettingsBinding((ScrollView) rootView, radioGroupModel, seekBarTopCrop,
+          switchBle, switchTwoPass);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

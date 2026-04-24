@@ -16,8 +16,6 @@ id loadingIndicator
 id overlayView
 id previewView
 id radioGroupModel
-id radioYolov8n
-id radioYolov8s
 id seekBarTopCrop
 id statsCard
 id statusText

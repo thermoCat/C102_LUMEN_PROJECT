@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.ssafy.trafficlightstandalone.integrated"
-    android:versionCode="1"
-    android:versionName="1.0.0" >
+    package="com.ssafy.trafficlightstandalone.integrated.v4blinkstate"
+    android:versionCode="2026042304"
+    android:versionName="4.20260423.1" >
 
     <uses-sdk
         android:minSdkVersion="23"
@@ -43,10 +43,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <permission
-        android:name="com.ssafy.trafficlightstandalone.integrated.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:name="com.ssafy.trafficlightstandalone.integrated.v4blinkstate.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
 
-    <uses-permission android:name="com.ssafy.trafficlightstandalone.integrated.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+    <uses-permission android:name="com.ssafy.trafficlightstandalone.integrated.v4blinkstate.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
         android:allowBackup="true"
@@ -81,7 +81,7 @@
 
         <provider
             android:name="androidx.startup.InitializationProvider"
-            android:authorities="com.ssafy.trafficlightstandalone.integrated.androidx-startup"
+            android:authorities="com.ssafy.trafficlightstandalone.integrated.v4blinkstate.androidx-startup"
             android:exported="false" >
             <meta-data
                 android:name="androidx.emoji2.text.EmojiCompatInitializer"

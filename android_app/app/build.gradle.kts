@@ -17,11 +17,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.ssafy.trafficlightstandalone.integrated"
+        applicationId = "com.ssafy.trafficlightstandalone.integrated.v4blinkstate"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2026042304
+        versionName = "4.20260423.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -76,9 +76,9 @@ tasks.whenTaskAdded {
     if (name == "packageDebug") {
         doLast {
             val outputDir = project.layout.buildDirectory.dir("outputs/apk/debug").get().asFile
-            outputDir.listFiles { _, n -> n.endsWith(".apk") && n != "traffic_standalone_integrated.apk" }
+            outputDir.listFiles { _, n -> n.endsWith(".apk") && n != "trafficlight_v4_blink_state_20260423-debug.apk" }
                 ?.forEach { apk ->
-                    val target = File(apk.parent, "traffic_standalone_integrated.apk")
+                    val target = File(apk.parent, "trafficlight_v4_blink_state_20260423-debug.apk")
                     if (target.exists()) target.delete()
                     apk.renameTo(target)
                 }
@@ -87,9 +87,9 @@ tasks.whenTaskAdded {
     if (name == "packageRelease") {
         doLast {
             val outputDir = project.layout.buildDirectory.dir("outputs/apk/release").get().asFile
-            outputDir.listFiles { _, n -> n.endsWith(".apk") && n != "traffic_standalone_integrated-release.apk" }
+            outputDir.listFiles { _, n -> n.endsWith(".apk") && n != "trafficlight_v4_blink_state_20260423-release.apk" }
                 ?.forEach { apk ->
-                    val target = File(apk.parent, "traffic_standalone_integrated-release.apk")
+                    val target = File(apk.parent, "trafficlight_v4_blink_state_20260423-release.apk")
                     if (target.exists()) target.delete()
                     apk.renameTo(target)
                 }

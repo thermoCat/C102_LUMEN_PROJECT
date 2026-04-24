@@ -1,7 +1,7 @@
-#Wed Apr 22 10:28:41 KST 2026
-base.0=C\:\\Users\\SSAFY\\Desktop\\신호등 학습모델\\0014. 신호등 학습모델_YOLOv8n_통합앱\\android_app\\app\\build\\intermediates\\dex\\release\\mergeDexRelease\\classes.dex
-base.1=C\:\\Users\\SSAFY\\Desktop\\신호등 학습모델\\0014. 신호등 학습모델_YOLOv8n_통합앱\\android_app\\app\\build\\intermediates\\global_synthetics_dex\\release\\mergeReleaseGlobalSynthetics\\classes.dex
-base.2=C\:\\Users\\SSAFY\\Desktop\\신호등 학습모델\\0014. 신호등 학습모델_YOLOv8n_통합앱\\android_app\\app\\build\\intermediates\\dex\\release\\mergeDexRelease\\classes2.dex
+#Thu Apr 23 11:53:29 KST 2026
+base.0=C\:\\Users\\SSAFY\\Desktop\\신호등 학습모델\\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\\android_app\\app\\build\\intermediates\\dex\\release\\mergeDexRelease\\classes.dex
+base.1=C\:\\Users\\SSAFY\\Desktop\\신호등 학습모델\\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\\android_app\\app\\build\\intermediates\\global_synthetics_dex\\release\\mergeReleaseGlobalSynthetics\\classes.dex
+base.2=C\:\\Users\\SSAFY\\Desktop\\신호등 학습모델\\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\\android_app\\app\\build\\intermediates\\dex\\release\\mergeDexRelease\\classes2.dex
 path.0=classes.dex
 path.1=classes.dex
 path.2=classes2.dex

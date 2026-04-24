@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.Switch
@@ -24,6 +25,8 @@ import com.ssafy.trafficlightstandalone.integrated.databinding.ActivityMainBindi
 import com.ssafy.trafficlightstandalone.integrated.inference.LiteRtYoloDetector
 import com.ssafy.trafficlightstandalone.integrated.model.InferenceResult
 import com.ssafy.trafficlightstandalone.integrated.model.ModelConfig
+import com.ssafy.trafficlightstandalone.integrated.model.TrafficLightRoiSource
+import com.ssafy.trafficlightstandalone.integrated.model.TrafficLightState
 import com.ssafy.trafficlightstandalone.integrated.util.FpsStatsTracker
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -38,7 +41,7 @@ class MainActivity : AppCompatActivity() {
     private var detector: LiteRtYoloDetector? = null
     private var cameraController: CameraController? = null
     private var bleTransmitter: BleSignalTransmitter? = null
-    private var currentModelConfig = ModelConfig.YOLOV8N
+    private var currentModelConfig = ModelConfig.MODEL_0000_YOLOV8N_260408
 
     // Runtime-adjustable settings
     private var digitalZoom = 1.0f
@@ -159,7 +162,7 @@ class MainActivity : AppCompatActivity() {
     // ── Inference result ─────────────────────────────────────────────────────
 
     private fun handleInferenceResult(result: InferenceResult) {
-        bleTransmitter?.takeIf { bleEnabled }?.onDetectionsUpdated(result.detections)
+        bleTransmitter?.takeIf { bleEnabled }?.onInferenceResult(result)
         runOnUiThread {
             try {
                 val stats = fpsStatsTracker.record(result, SystemClock.elapsedRealtime())
@@ -168,7 +171,10 @@ class MainActivity : AppCompatActivity() {
                     detections = result.detections,
                     sourceWidth = result.sourceWidth,
                     sourceHeight = result.sourceHeight,
+                    trafficLightRoi = result.trafficLightRoi,
+                    trafficLightRoiSource = result.trafficLightRoiSource,
                 )
+                val trafficLightSummary = buildTrafficLightSummary(result)
                 binding.statusText.text = getString(
                     R.string.status_detection_perf_template,
                     result.detections.size,
@@ -181,13 +187,18 @@ class MainActivity : AppCompatActivity() {
                         R.string.detail_no_detection_perf_template,
                         (result.peakScore * 100f).toInt(),
                         result.pipelineTimeMs,
-                    )
+                    ) + trafficLightSummary
                 } else {
                     val summary = result.detections
                         .groupBy { it.className }.entries
                         .sortedByDescending { it.value.size }
                         .joinToString(", ") { "${formatClassName(it.key)} x${it.value.size}" }
-                    getString(R.string.detail_detection_perf_template, summary, result.pipelineTimeMs, stats.avgPipelineMs)
+                    getString(
+                        R.string.detail_detection_perf_template,
+                        summary,
+                        result.pipelineTimeMs,
+                        stats.avgPipelineMs,
+                    ) + trafficLightSummary
                 }
                 binding.tvInferenceMs.text = getString(R.string.stat_inference_ms, result.inferenceTimeMs)
                 binding.tvInferenceFps.text = getString(R.string.stat_inference_fps, stats.inferenceFps)
@@ -288,15 +299,23 @@ class MainActivity : AppCompatActivity() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_settings, null)
 
         val radioGroup = dialogView.findViewById<RadioGroup>(R.id.radioGroupModel)
-        val radioYolov8n = dialogView.findViewById<android.widget.RadioButton>(R.id.radioYolov8n)
-        val radioYolov8s = dialogView.findViewById<android.widget.RadioButton>(R.id.radioYolov8s)
         val switchTwoPass = dialogView.findViewById<Switch>(R.id.switchTwoPass)
         val seekTopCrop = dialogView.findViewById<SeekBar>(R.id.seekBarTopCrop)
         val switchBle = dialogView.findViewById<Switch>(R.id.switchBle)
+        val modelOptionMap = mutableMapOf<Int, ModelConfig>()
 
-        when (currentModelConfig) {
-            ModelConfig.YOLOV8N -> radioYolov8n.isChecked = true
-            ModelConfig.YOLOV8S -> radioYolov8s.isChecked = true
+        ModelConfig.values().forEach { config ->
+            val button = RadioButton(this).apply {
+                id = View.generateViewId()
+                text = config.displayName
+                setTextColor(0xFF212121.toInt())
+                textSize = 14f
+            }
+            radioGroup.addView(button)
+            modelOptionMap[button.id] = config
+            if (config == currentModelConfig) {
+                button.isChecked = true
+            }
         }
         switchTwoPass.isChecked = twoPasEnabled
         seekTopCrop.progress = ((topCropRatio - 0.3f) / 0.6f * 100).toInt().coerceIn(0, 100)
@@ -306,10 +325,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.settings_title)
             .setView(dialogView)
             .setPositiveButton(R.string.settings_apply) { _, _ ->
-                val newModel = when (radioGroup.checkedRadioButtonId) {
-                    R.id.radioYolov8s -> ModelConfig.YOLOV8S
-                    else -> ModelConfig.YOLOV8N
-                }
+                val newModel = modelOptionMap[radioGroup.checkedRadioButtonId] ?: currentModelConfig
                 val modelChanged = newModel != currentModelConfig
                 currentModelConfig = newModel
 
@@ -350,6 +366,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun buildTrafficLightSummary(result: InferenceResult): String {
+        if (result.trafficLightRoiSource == TrafficLightRoiSource.NONE &&
+            result.trafficLightState == TrafficLightState.NONE
+        ) {
+            return ""
+        }
+        return " | ROI ${formatTrafficLightRoiSource(result.trafficLightRoiSource)} / Signal ${formatTrafficLightState(result.trafficLightState)}"
+    }
+
+    private fun formatTrafficLightRoiSource(source: TrafficLightRoiSource): String = when (source) {
+        TrafficLightRoiSource.PTL -> "PTL"
+        TrafficLightRoiSource.EXPANDED -> "EXP"
+        TrafficLightRoiSource.TRACKED -> "TRACK"
+        TrafficLightRoiSource.NONE -> "NONE"
+    }
+
+    private fun formatTrafficLightState(state: TrafficLightState): String = when (state) {
+        TrafficLightState.GREEN -> "GREEN"
+        TrafficLightState.RED -> "RED"
+        TrafficLightState.NONE -> "NONE"
+    }
 
     private fun formatClassName(className: String): String =
         className.replace('_', ' ').split(' ').filter { it.isNotBlank() }

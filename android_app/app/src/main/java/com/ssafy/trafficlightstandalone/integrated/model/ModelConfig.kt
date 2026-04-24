@@ -6,16 +6,22 @@ enum class ModelConfig(
     val inputSize: Int,
     val displayName: String,
 ) {
-    YOLOV8N(
-        modelAsset = "model_yolov8n.tflite",
-        labelsAsset = "labels.txt",
+    MODEL_0000_YOLOV8N_260408(
+        modelAsset = "model_0000_yolov8n_260408.tflite",
+        labelsAsset = "labels_0000_yolov8n_260408.txt",
         inputSize = 640,
-        displayName = "YOLOv8n (경량)",
+        displayName = "0000 YOLOv8n (260408)",
     ),
-    YOLOV8S(
-        modelAsset = "model_yolov8s.tflite",
-        labelsAsset = "labels.txt",
+    MODEL_0015_YOLO11N(
+        modelAsset = "model_0015_yolo11n.tflite",
+        labelsAsset = "labels_0015_yolo11n.txt",
         inputSize = 640,
-        displayName = "YOLOv8s (표준)",
+        displayName = "0015 YOLOv11n",
+    ),
+    MODEL_0016_YOLO11N_SMALL_OBJECT(
+        modelAsset = "model_0016_yolo11_small_object.tflite",
+        labelsAsset = "labels_0016_yolo11_small_object.txt",
+        inputSize = 640,
+        displayName = "0016 YOLOv11n Small Object",
     ),
 }

@@ -686,7 +686,7 @@
     <string name="abc_toolbar_collapse_description">Collapse</string>
     <string name="androidx_startup" translatable="false">androidx.startup</string>
     <string name="app_name">신호등 통합 감지</string>
-    <string name="app_name_standalone">TrafficLight Standalone</string>
+    <string name="app_name_standalone">TrafficLight V4 Blink State</string>
     <string name="ble_status_enable_bluetooth">BLE: 블루투스를 활성화해 주세요</string>
     <string name="ble_status_idle">BLE: 비활성 (설정에서 활성화)</string>
     <string name="ble_status_permission_required">BLE: 블루투스 권한이 필요합니다</string>

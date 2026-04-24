@@ -15,8 +15,6 @@ int id loadingIndicator 0x0
 int id overlayView 0x0
 int id previewView 0x0
 int id radioGroupModel 0x0
-int id radioYolov8n 0x0
-int id radioYolov8s 0x0
 int id seekBarTopCrop 0x0
 int id statsCard 0x0
 int id statusText 0x0

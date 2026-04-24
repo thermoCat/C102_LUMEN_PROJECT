@@ -10,6 +10,27 @@ data class Detection(
     val bottom: Float,
 )
 
+enum class TrafficLightRoiSource {
+    PTL,
+    EXPANDED,
+    TRACKED,
+    NONE,
+}
+
+enum class TrafficLightState {
+    GREEN,
+    RED,
+    NONE,
+}
+
+data class TrafficLightRoi(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+    val confidence: Float,
+)
+
 data class InferenceResult(
     val detections: List<Detection>,
     val inferenceTimeMs: Long,
@@ -17,6 +38,9 @@ data class InferenceResult(
     val sourceWidth: Int,
     val sourceHeight: Int,
     val peakScore: Float,
+    val trafficLightRoi: TrafficLightRoi? = null,
+    val trafficLightRoiSource: TrafficLightRoiSource = TrafficLightRoiSource.NONE,
+    val trafficLightState: TrafficLightState = TrafficLightState.NONE,
 )
 
 data class LetterboxInfo(

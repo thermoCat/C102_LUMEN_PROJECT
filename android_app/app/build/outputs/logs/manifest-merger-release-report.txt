@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
-INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
-INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
-INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
+INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
+INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
+INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:2:1-47:12
 MERGED from [androidx.databinding:viewbinding:9.1.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\a99bab2bc37a33c1eff0110b5a81a113\workspace\transformed\viewbinding-9.1.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.1] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d58ad48fae5c20bc2e60e414f246173\workspace\transformed\constraintlayout-2.2.1\AndroidManifest.xml:2:1-9:12
 MERGED from [androidx.camera:camera-video:1.6.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\42a7fa38da489e21a22396646cf3806c\workspace\transformed\camera-video-1.6.0\AndroidManifest.xml:2:1-7:12
@@ -71,60 +71,60 @@ MERGED from [androidx.sqlite:sqlite:2.3.0] C:\Users\SSAFY\.gradle\caches\9.3.1\t
 MERGED from [androidx.compose.runtime:runtime-annotation-android:1.9.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\411abb9f8b7cff4cf2c89ca1385961e9\workspace\transformed\runtime-annotation\AndroidManifest.xml:2:1-7:12
 MERGED from [com.google.android.play:core-common:2.0.4] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d0eecec4df0f2024ebbea2ec71e2d49\workspace\transformed\core-common-2.0.4\AndroidManifest.xml:2:1-21:12
 	package
-		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
+		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
 	android:versionName
-		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
+		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
 	android:versionCode
-		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
+		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
 	xmlns:android
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:2:11-69
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:2:11-69
 uses-permission#android.permission.CAMERA
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:4:5-65
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:4:5-65
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:4:22-62
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:4:22-62
 uses-permission#android.permission.BLUETOOTH_SCAN
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:7:5-8:58
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:7:5-8:58
 	android:usesPermissionFlags
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:8:9-55
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:8:9-55
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:7:22-70
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:7:22-70
 uses-permission#android.permission.BLUETOOTH_CONNECT
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:9:5-76
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:9:5-76
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:9:22-73
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:9:22-73
 uses-permission#android.permission.BLUETOOTH
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:12:5-13:38
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:12:5-13:38
 	android:maxSdkVersion
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:13:9-35
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:13:9-35
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:12:22-65
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:12:22-65
 uses-permission#android.permission.BLUETOOTH_ADMIN
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:14:5-15:38
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:14:5-15:38
 	android:maxSdkVersion
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:15:9-35
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:15:9-35
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:14:22-71
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:14:22-71
 uses-permission#android.permission.ACCESS_FINE_LOCATION
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:16:5-17:38
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:16:5-17:38
 	android:maxSdkVersion
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:17:9-35
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:17:9-35
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:16:22-76
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:16:22-76
 uses-feature#android.hardware.camera.any
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:19:5-21:35
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:19:5-21:35
 	android:required
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:21:9-32
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:21:9-32
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:20:9-51
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:20:9-51
 uses-feature#android.hardware.bluetooth_le
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:22:5-24:36
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:22:5-24:36
 	android:required
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:24:9-33
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:24:9-33
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:23:9-53
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:23:9-53
 application
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:26:5-45:19
-INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:26:5-45:19
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:26:5-45:19
+INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:26:5-45:19
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.1] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d58ad48fae5c20bc2e60e414f246173\workspace\transformed\constraintlayout-2.2.1\AndroidManifest.xml:7:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.1] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d58ad48fae5c20bc2e60e414f246173\workspace\transformed\constraintlayout-2.2.1\AndroidManifest.xml:7:5-20
 MERGED from [androidx.camera:camera-camera2:1.6.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\05ffd2d2d7087c3128b9cc8e15e12f2c\workspace\transformed\camera-camera2-1.6.0\AndroidManifest.xml:23:5-34:19
@@ -160,47 +160,47 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\SS
 MERGED from [com.google.android.play:core-common:2.0.4] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d0eecec4df0f2024ebbea2ec71e2d49\workspace\transformed\core-common-2.0.4\AndroidManifest.xml:11:5-19:19
 MERGED from [com.google.android.play:core-common:2.0.4] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d0eecec4df0f2024ebbea2ec71e2d49\workspace\transformed\core-common-2.0.4\AndroidManifest.xml:11:5-19:19
 	android:extractNativeLibs
-		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
+		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:33:9-35
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:33:9-35
 	android:label
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:31:9-52
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:31:9-52
 	android:fullBackupContent
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:29:9-54
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:29:9-54
 	android:roundIcon
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:32:9-54
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:32:9-54
 	android:icon
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:30:9-43
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:30:9-43
 	android:allowBackup
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:27:9-35
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:27:9-35
 	android:theme
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:34:9-70
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:34:9-70
 	android:dataExtractionRules
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:28:9-65
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:28:9-65
 activity#com.ssafy.trafficlightstandalone.integrated.MainActivity
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:36:9-44:20
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:36:9-44:20
 	android:screenOrientation
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:39:13-49
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:39:13-49
 	android:exported
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:38:13-36
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:38:13-36
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:37:13-84
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:37:13-84
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:40:13-43:29
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:40:13-43:29
 action#android.intent.action.MAIN
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:41:17-69
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:41:17-69
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:41:25-66
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:41:25-66
 category#android.intent.category.LAUNCHER
-ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:42:17-77
+ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:42:17-77
 	android:name
-		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml:42:27-74
+		ADDED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml:42:27-74
 uses-sdk
-INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
-INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
-INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
+INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
+INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
 MERGED from [androidx.databinding:viewbinding:9.1.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\a99bab2bc37a33c1eff0110b5a81a113\workspace\transformed\viewbinding-9.1.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.databinding:viewbinding:9.1.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\a99bab2bc37a33c1eff0110b5a81a113\workspace\transformed\viewbinding-9.1.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.1] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d58ad48fae5c20bc2e60e414f246173\workspace\transformed\constraintlayout-2.2.1\AndroidManifest.xml:5:5-44
@@ -334,9 +334,9 @@ MERGED from [androidx.compose.runtime:runtime-annotation-android:1.9.0] C:\Users
 MERGED from [com.google.android.play:core-common:2.0.4] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d0eecec4df0f2024ebbea2ec71e2d49\workspace\transformed\core-common-2.0.4\AndroidManifest.xml:7:5-9:41
 MERGED from [com.google.android.play:core-common:2.0.4] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\6d0eecec4df0f2024ebbea2ec71e2d49\workspace\transformed\core-common-2.0.4\AndroidManifest.xml:7:5-9:41
 	android:targetSdkVersion
-		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
+		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
 	android:minSdkVersion
-		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0014. 신호등 학습모델_YOLOv8n_통합앱\android_app\app\src\main\AndroidManifest.xml
+		INJECTED from C:\Users\SSAFY\Desktop\신호등 학습모델\0099. 신호등 학습모델_YOLOv8n_통합앱_V4_점멸등 상태결정\android_app\app\src\main\AndroidManifest.xml
 service#androidx.camera.core.impl.MetadataHolderService
 ADDED from [androidx.camera:camera-camera2:1.6.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\05ffd2d2d7087c3128b9cc8e15e12f2c\workspace\transformed\camera-camera2-1.6.0\AndroidManifest.xml:24:9-33:19
 MERGED from [androidx.camera:camera-core:1.6.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\608166c87880434978f96ca36e6cf4cf\workspace\transformed\camera-core-1.6.0\AndroidManifest.xml:29:9-33:78
@@ -675,7 +675,7 @@ ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\trans
 		ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:24:9-44
 	android:name
 		ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:23:9-81
-permission#com.ssafy.trafficlightstandalone.integrated.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+permission#com.ssafy.trafficlightstandalone.integrated.v4blinkstate.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:22:5-24:47
 	android:protectionLevel
 		ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:24:9-44
@@ -685,7 +685,7 @@ uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:26:22-94
-uses-permission#com.ssafy.trafficlightstandalone.integrated.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission#com.ssafy.trafficlightstandalone.integrated.v4blinkstate.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.18.0] C:\Users\SSAFY\.gradle\caches\9.3.1\transforms\857acc050ed65fbfd215dff981015102\workspace\transformed\core-1.18.0\AndroidManifest.xml:26:22-94
