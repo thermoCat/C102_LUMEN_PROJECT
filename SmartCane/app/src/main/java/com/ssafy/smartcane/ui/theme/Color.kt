@@ -10,7 +10,7 @@ val Purple40 = Color(0xFF6650A4)
 val PurpleGrey40 = Color(0xFF625B71)
 val Pink40 = Color(0xFF7D5260)
 
-val NavBg = Color(0xFF121212)
+val NavBg = Color(0xFF1A1A1A)
 val NavBg2 = Color(0xFF343434)
 val NavBg3 = Color(0xFF4C4C4C)
 val NavYellow = Color(0xFFF9A800)

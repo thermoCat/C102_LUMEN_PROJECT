@@ -1,7 +1,8 @@
-package com.ssafy.smartcane.ui.screen
+﻿package com.ssafy.smartcane.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,13 +10,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -81,7 +88,10 @@ fun FavScreen(
                     sub = FavSub.Rename
                 },
                 onBack = { sub = FavSub.List },
-                onTabChange = onTabChange
+                onTabChange = { tab ->
+                    sub = FavSub.List
+                    if (tab != NavTab.Fav) onTabChange(tab)
+                }
             )
         }
 
@@ -96,7 +106,7 @@ fun FavScreen(
                 },
                 onTabChange = { tab ->
                     saveEditedFavorite(item)
-                    sub = FavSub.Detail
+                    sub = FavSub.List
                     if (tab != NavTab.Fav) onTabChange(tab)
                 }
             )
@@ -104,83 +114,172 @@ fun FavScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FavListView(
     favorites: List<FavItem>,
     onOpen: (FavItem) -> Unit,
     onTabChange: (NavTab) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val compactTitleAlphaTarget by remember {
+        derivedStateOf {
+            when {
+                listState.firstVisibleItemIndex > 0 -> 1f
+                else -> {
+                    val revealStart = with(density) { 34.dp.toPx() }
+                    val revealRange = with(density) { 18.dp.toPx() }
+                    ((listState.firstVisibleItemScrollOffset - revealStart) / revealRange).coerceIn(0f, 1f)
+                }
+            }
+        }
+    }
+    val compactTitleAlpha by animateFloatAsState(
+        targetValue = compactTitleAlphaTarget,
+        animationSpec = tween(durationMillis = 320),
+        label = "favCompactTitleAlpha"
+    )
+    val stickyHeaderHeight = 56.dp
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(NavBg)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(top = 64.dp)
         ) {
-            Text(
-                text = "즐겨찾기 목록",
-                color = AppWhite,
-                fontSize = 36.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
-            Column(modifier = Modifier.padding(horizontal = 10.dp)) {
             if (favorites.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "즐겨찾기한 장소가 없습니다.",
-                        color = AppWhite,
-                        fontSize = 18.sp
-                    )
-                }
-            } else {
-                Spacer(Modifier.height(26.dp))
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
+                        .fillMaxSize()
+                        .padding(top = 64.dp)
                 ) {
-                    favorites.forEach { item ->
+                    Text(
+                        text = "\uc990\uaca8\ucc3e\uae30",
+                        color = AppWhite,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "\uc990\uaca8\ucc3e\uae30\ud55c \uc7a5\uc18c\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.",
+                            color = AppWhite,
+                            fontSize = 18.sp
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = stickyHeaderHeight),
+                    state = listState,
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 0.dp)
+                        ) {
+                            Text(
+                                text = "\uc990\uaca8\ucc3e\uae30",
+                                color = AppWhite,
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 20.dp)
+                            )
+                            Spacer(Modifier.height(10.dp))
+                        }
+                    }
+                    stickyHeader {
+                        FavSectionTitleBlock()
+                    }
+                    items(favorites, key = { it.id }) { item ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onOpen(item) }
-                                .padding(horizontal = 20.dp, vertical = 12.dp)
+                                .padding(horizontal = 40.dp, vertical = 12.dp)
                         ) {
                             Text(
                                 text = item.addr,
                                 color = NavGray,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Normal,
-                                modifier = Modifier.padding(horizontal = 10.dp)
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Normal
                             )
                             Text(
                                 text = item.name.take(12),
                                 color = AppWhite,
-                                fontSize = 23.sp,
+                                fontSize = 24.sp,
                                 fontWeight = FontWeight.Normal,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 10.dp)
+                                maxLines = 1
                             )
                         }
                         HorizontalDivider(
                             color = NavDivider,
                             thickness = 0.5.dp,
-                            modifier = Modifier.padding(horizontal = 20.dp)
+                            modifier = Modifier.padding(horizontal = 30.dp)
                         )
                     }
                 }
-            }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(stickyHeaderHeight)
+                        .background(NavBg)
+                ) {
+                    Text(
+                        text = "\uc990\uaca8\ucc3e\uae30",
+                        color = AppWhite.copy(alpha = compactTitleAlpha),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                    )
+                    HorizontalDivider(
+                        color = NavGray.copy(alpha = compactTitleAlpha),
+                        thickness = 0.5.dp,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                }
             }
         }
         BottomNav(active = NavTab.Fav, onTab = onTabChange)
+    }
+}
+
+@Composable
+private fun FavSectionTitleBlock(
+    modifier: Modifier = Modifier,
+    alpha: Float = 1f
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(NavBg)
+            .padding(horizontal = 30.dp)
+    ) {
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "\uc990\uaca8\ucc3e\uae30 \ubaa9\ub85d",
+            color = AppWhite.copy(alpha = alpha),
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.height(10.dp))
     }
 }
 
@@ -264,7 +363,8 @@ private fun FavRenameView(
                     color = AppWhite,
                     fontSize = 32.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    letterSpacing = (-0.6).sp
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,

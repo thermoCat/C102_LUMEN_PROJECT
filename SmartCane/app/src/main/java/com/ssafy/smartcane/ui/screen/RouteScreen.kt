@@ -68,12 +68,20 @@ fun RouteScreen(onTabChange: (NavTab) -> Unit) {
 
         RouteSub.Simple -> SimpleRouteView(
             destName = "멀티캠퍼스",
-            onDone = { sub = RouteSub.Main }
+            onDone = { sub = RouteSub.Main },
+            onTabChange = { nextTab ->
+                sub = RouteSub.Main
+                if (nextTab != NavTab.Route) onTabChange(nextTab)
+            }
         )
 
         RouteSub.Navigation -> MapNavView(
             destName = "멀티캠퍼스",
-            onStop = { sub = RouteSub.Main }
+            onStop = { sub = RouteSub.Main },
+            onTabChange = { nextTab ->
+                sub = RouteSub.Main
+                if (nextTab != NavTab.Route) onTabChange(nextTab)
+            }
         )
     }
 }
@@ -95,13 +103,13 @@ private fun RouteMainView(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, top = 64.dp, end = 20.dp, bottom = 22.dp)
+                .padding(start = 20.dp, top = 56.dp, end = 20.dp, bottom = 22.dp)
         ) {
             Text(
                 text = "경로 탐색",
                 color = AppWhite,
-                fontSize = 36.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold
             )
             Column(modifier = Modifier.padding(horizontal = 10.dp)) {
             Spacer(Modifier.height(40.dp))
@@ -153,7 +161,11 @@ private fun RouteInfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun SimpleRouteView(destName: String, onDone: () -> Unit) {
+private fun SimpleRouteView(
+    destName: String,
+    onDone: () -> Unit,
+    onTabChange: (NavTab) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -226,12 +238,16 @@ private fun SimpleRouteView(destName: String, onDone: () -> Unit) {
             )
         }
         Spacer(Modifier.weight(1f))
-        BottomNav(active = NavTab.Route, onTab = {})
+        BottomNav(active = NavTab.Route, onTab = onTabChange)
     }
 }
 
 @Composable
-private fun MapNavView(destName: String, onStop: () -> Unit) {
+private fun MapNavView(
+    destName: String,
+    onStop: () -> Unit,
+    onTabChange: (NavTab) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -363,5 +379,6 @@ private fun MapNavView(destName: String, onStop: () -> Unit) {
                 modifier = Modifier.weight(1f)
             )
         }
+        BottomNav(active = NavTab.Route, onTab = onTabChange)
     }
 }

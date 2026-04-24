@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,7 @@ import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.theme.AppWhite
 import com.ssafy.smartcane.ui.theme.NavBarBg
+import com.ssafy.smartcane.ui.theme.NavGray
 
 private val SafetyAccent = Color(0xFF005387)
 private val SafetyBackground = Color(0xFF001B2B)
@@ -60,28 +62,56 @@ fun SafetyScreen(
                 .fillMaxSize()
                 .padding(horizontal = 20.dp)
         ) {
-            Box(modifier = Modifier.align(Alignment.Center)) {
-                SafetyActionButton(enabled = enabled, onClick = { enabled = !enabled })
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-132).dp)
-            ) {
-            SafetyStatusText(enabled = enabled)
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = 103.dp)
-            ) {
-                SafetySwitch(enabled = enabled, onToggle = { enabled = !enabled })
-            }
+            SafetyCenteredContent(
+                enabled = enabled,
+                onButtonClick = { enabled = !enabled },
+                onToggle = { enabled = !enabled }
+            )
         }
         Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-            BottomNav(active = NavTab.Safety, onTab = onTabChange)
+            BottomNav(
+                active = NavTab.Safety,
+                onTab = { tab ->
+                    enabled = false
+                    if (tab != NavTab.Safety) onTabChange(tab)
+                },
+                backgroundColor = background
+            )
+        }
+    }
+}
+
+@Composable
+private fun SafetyCenteredContent(
+    enabled: Boolean,
+    onButtonClick: () -> Unit,
+    onToggle: () -> Unit
+) {
+    val gap = 40.dp
+    Layout(
+        modifier = Modifier.fillMaxSize(),
+        content = {
+            SafetyStatusText(enabled = enabled)
+            SafetyActionButton(enabled = enabled, onClick = onButtonClick)
+            SafetySwitch(enabled = enabled, onToggle = onToggle)
+        }
+    ) { measurables, constraints ->
+        val textPlaceable = measurables[0].measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val buttonPlaceable = measurables[1].measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val switchPlaceable = measurables[2].measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val gapPx = gap.roundToPx()
+
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            val buttonX = (constraints.maxWidth - buttonPlaceable.width) / 2
+            val buttonY = (constraints.maxHeight - buttonPlaceable.height) / 2
+            val textX = (constraints.maxWidth - textPlaceable.width) / 2
+            val textY = buttonY - gapPx - textPlaceable.height
+            val switchX = (constraints.maxWidth - switchPlaceable.width) / 2
+            val switchY = buttonY + buttonPlaceable.height + gapPx
+
+            textPlaceable.placeRelative(textX, textY.coerceAtLeast(0))
+            buttonPlaceable.placeRelative(buttonX, buttonY)
+            switchPlaceable.placeRelative(switchX, switchY)
         }
     }
 }
@@ -92,8 +122,8 @@ private fun SafetyStatusText(enabled: Boolean) {
         Text(
             text = if (enabled) "안전 보행 모드가 가동 중입니다." else "안전 보행 모드가 비활성 상태입니다.",
             color = AppWhite,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.ExtraBold,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
             lineHeight = 30.sp,
             modifier = Modifier.fillMaxWidth()
@@ -101,8 +131,9 @@ private fun SafetyStatusText(enabled: Boolean) {
         Spacer(Modifier.height(8.dp))
         Text(
             text = if (enabled) "버튼을 누르면 안전 보행이 종료됩니다." else "버튼을 눌러 안전 보행을 활성화하세요.",
-            color = Color(0xFFD2D2D2),
-            fontSize = 16.sp,
+            color = NavGray,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )

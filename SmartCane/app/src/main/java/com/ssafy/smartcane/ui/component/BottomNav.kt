@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -28,7 +29,11 @@ import com.ssafy.smartcane.ui.theme.NavBarBg
 import com.ssafy.smartcane.ui.theme.NavYellow
 
 @Composable
-fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
+fun BottomNav(
+    active: NavTab,
+    onTab: (NavTab) -> Unit,
+    backgroundColor: Color = NavBarBg
+) {
     val items = listOf(
         NavItem(NavTab.Search, "위치 검색", R.drawable.ic_nav_search),
         NavItem(NavTab.Route, "경로 탐색", R.drawable.ic_nav_route),
@@ -39,7 +44,7 @@ fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(NavBarBg)
+            .background(backgroundColor)
             .navigationBarsPadding()
     ) {
         Row(
@@ -71,7 +76,7 @@ fun BottomNav(active: NavTab, onTab: (NavTab) -> Unit) {
                     )
                     Text(
                         text = item.label,
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Normal,
                         color = if (isActive) NavYellow else AppWhite
                     )
