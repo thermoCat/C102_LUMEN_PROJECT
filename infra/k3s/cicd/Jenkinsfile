@@ -15,6 +15,7 @@ pipeline {
         BACKEND_IMAGE_REPOSITORY = 'kjw3568/smartcane-backend'
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
         KUBECTL_VERSION = 'v1.34.1'
+        K8S_API_SERVER = 'https://172.26.4.199:6443'
         ENABLE_IMAGE_BUILD = 'true'
         ENABLE_IMAGE_PUSH = 'true'
         ENABLE_K8S_DEPLOY = 'true'
@@ -207,6 +208,7 @@ pipeline {
                       chmod +x "${KUBECTL_BIN}"
                     fi
 
+                    set +x
                     SERVICEACCOUNT_DIR="/var/run/secrets/kubernetes.io/serviceaccount"
                     CLUSTER_CA="${SERVICEACCOUNT_DIR}/ca.crt"
                     CLUSTER_TOKEN="$(cat "${SERVICEACCOUNT_DIR}/token")"
@@ -218,7 +220,7 @@ kind: Config
 clusters:
 - cluster:
     certificate-authority: ${CLUSTER_CA}
-    server: https://kubernetes.default.svc
+    server: ${K8S_API_SERVER}
   name: in-cluster
 contexts:
 - context:
@@ -232,6 +234,7 @@ users:
   user:
     token: ${CLUSTER_TOKEN}
 EOF
+                    set -x
 
                     export PATH="$(dirname "${KUBECTL_BIN}"):${PATH}"
                     export KUBECONFIG="${KUBECONFIG_FILE}"
