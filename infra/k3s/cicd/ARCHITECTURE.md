@@ -249,6 +249,199 @@ A서버IP:32080 -> Jenkins:8080
 
 ---
 
+## 7-1. Service / Ingress / Traefik / Nginx 차이
+
+이 부분은 쿠버네티스를 처음 볼 때 가장 헷갈리기 쉬운 지점입니다.
+
+핵심은 역할이 다르다는 것입니다.
+
+### 1. Service
+
+Service는 **클러스터 내부에서 Pod들을 하나의 서비스처럼 묶어주는 객체**입니다.
+
+예를 들어 backend Pod가 3개 있으면:
+
+```text
+backend-pod-1
+backend-pod-2
+backend-pod-3
+```
+
+이 Pod들 앞에 `backend-service`를 두면, 다른 Pod나 Ingress는 이 Service 이름만 보고 접근할 수 있습니다.
+
+Service가 하는 일:
+
+- 같은 역할의 Pod들을 한 그룹으로 묶음
+- Pod IP가 바뀌어도 고정된 서비스 이름 제공
+- 같은 서비스 안의 여러 Pod로 트래픽 분산
+
+즉 **기본적인 내부 로드밸런싱**은 Service가 합니다.
+
+### 2. NodePort
+
+NodePort는 Service를 **노드의 특정 포트로 외부 공개**하는 방식입니다.
+
+예:
+
+```text
+43.202.33.39:32080 -> backend-service:80
+```
+
+특징:
+
+- 외부에서 직접 접근 가능
+- 쿠버네티스 기능만으로 구성 가능
+- 보통 포트가 `30000~32767`
+
+즉 NodePort는 **Service를 바깥으로 꺼내는 방법 중 하나**입니다.
+
+### 3. Ingress
+
+Ingress는 **외부에서 들어온 HTTP/HTTPS 요청을 어떤 서비스로 보낼지 정하는 규칙**입니다.
+
+예:
+
+```text
+/api    -> backend-service
+/admin  -> admin-service
+```
+
+또는
+
+```text
+api.smartcane.com   -> backend-service
+admin.smartcane.com -> admin-service
+```
+
+즉 Ingress는:
+
+- 도메인 기준 분기
+- path 기준 분기
+- 외부 HTTP 진입 규칙 정의
+
+를 담당합니다.
+
+다만 Ingress는 **규칙만 적는 객체**이고, 이 규칙을 실제로 처리해주는 프로그램이 따로 필요합니다.
+
+### 4. Ingress Controller
+
+Ingress 규칙을 실제로 읽고 동작하는 프로그램이 **Ingress Controller**입니다.
+
+즉:
+
+- Ingress = 규칙
+- Ingress Controller = 그 규칙을 실제로 수행하는 엔진
+
+### 5. Nginx
+
+Nginx는 원래 웹서버이자 리버스 프록시입니다.  
+쿠버네티스에서는 `Nginx Ingress Controller` 형태로 많이 씁니다.
+
+즉 Nginx는:
+
+- 외부 요청을 받아서
+- Ingress 규칙대로
+- 각 서비스로 전달하는 역할
+
+을 할 수 있습니다.
+
+하지만 중요한 점은:
+
+**Ingress Controller가 Nginx만 있는 것은 아닙니다.**
+
+### 6. Traefik
+
+Traefik도 Ingress Controller입니다.
+
+k3s는 기본적으로 Traefik이 함께 설치되는 경우가 많아서, 현재 구조에서는 굳이 별도 Nginx를 추가하지 않아도 Traefik으로 외부 HTTP 라우팅을 처리할 수 있습니다.
+
+즉 현재 SmartCane 구조에서는:
+
+- Nginx를 꼭 써야 하는 것은 아님
+- 이미 있는 Traefik을 활용하는 것이 더 자연스러움
+
+### 7. 한 줄씩 비교
+
+```text
+Pod
+-> 실제 앱 컨테이너
+
+Service
+-> Pod들을 하나의 서비스로 묶고 내부 로드밸런싱
+
+NodePort
+-> Service를 노드 포트로 외부 공개
+
+Ingress
+-> 외부 요청을 어떤 Service로 보낼지 규칙 정의
+
+Ingress Controller
+-> Ingress 규칙을 실제로 처리하는 프로그램
+
+Nginx
+-> 사용할 수 있는 Ingress Controller 중 하나
+
+Traefik
+-> 사용할 수 있는 Ingress Controller 중 하나
+```
+
+### 8. SmartCane 기준으로 보면
+
+예를 들어 나중에 서비스가 이렇게 있다고 가정하면:
+
+```text
+backend-service
+admin-service
+jenkins-service
+```
+
+구조는 이렇게 됩니다.
+
+```text
+외부 사용자
+  |
+  v
+Ingress Controller (예: Traefik)
+  |
+  +--> /api    -> backend-service
+  +--> /admin  -> admin-service
+  +--> /jenkins -> jenkins-service
+  |
+  v
+각 Service가 내부 Pod들로 분산
+```
+
+즉:
+
+- 외부 라우팅은 Ingress Controller가 하고
+- 서비스 내부 분산은 Service가 합니다.
+
+그래서 “로드밸런싱”이라는 말을 쓸 때도 두 층이 있습니다.
+
+- 외부 진입 라우팅
+- 내부 Pod 분산
+
+### 9. 지금 우리 구조에서의 해석
+
+현재 Jenkins는 아직 Ingress/NodePort로 정식 공개한 게 아니라,
+
+```text
+systemd + kubectl port-forward
+```
+
+방식으로 `8989 -> Jenkins 8080`을 유지하고 있습니다.
+
+즉 현재 Jenkins 공개는:
+
+- Ingress 기반 정식 공개는 아님
+- 임시지만 상시 유지 가능한 공개 방식
+
+입니다.
+
+반면 backend/admin 서비스를 실제로 외부 제공하게 되면, 그때는 Traefik Ingress 쪽으로 가는 것이 더 자연스럽습니다.
+
+---
+
 ## 8. bootstrap pipeline이란 무엇인가
 
 현재 Jenkinsfile은 아직 실제 앱 빌드/배포용 파이프라인이 아닙니다.
