@@ -135,14 +135,14 @@ pipeline {
 
         stage('Build Container Image') {
             when {
-                expression { env.ENABLE_IMAGE_BUILD == 'true' }
+                expression { env.ENABLE_IMAGE_BUILD == 'true' && env.ENABLE_IMAGE_PUSH != 'true' }
             }
             steps {
                 dir("${BACKEND_APP_DIR}") {
                     sh '''
                         set -eu
-                        command -v docker >/dev/null 2>&1
-                        docker build -t "${BACKEND_IMAGE}" .
+                        chmod +x gradlew
+                        ./gradlew --no-daemon jibBuildTar -Djib.to.image="${BACKEND_IMAGE}"
                     '''
                 }
             }
@@ -160,9 +160,12 @@ pipeline {
                 )]) {
                     sh '''
                         set -eu
-                        command -v docker >/dev/null 2>&1
-                        echo "${REGISTRY_PASSWORD}" | docker login -u "${REGISTRY_USERNAME}" --password-stdin
-                        docker push "${BACKEND_IMAGE}"
+                        cd "${BACKEND_APP_DIR}"
+                        chmod +x gradlew
+                        ./gradlew --no-daemon jib \
+                          -Djib.to.image="${BACKEND_IMAGE}" \
+                          -Djib.to.auth.username="${REGISTRY_USERNAME}" \
+                          -Djib.to.auth.password="${REGISTRY_PASSWORD}"
                     '''
                 }
             }
@@ -183,7 +186,7 @@ pipeline {
 
         stage('Archive Build Outputs') {
             steps {
-                archiveArtifacts artifacts: 'backend/build/libs/*.jar,build/deploy/backend/*.yaml', fingerprint: true
+                archiveArtifacts artifacts: 'backend/build/libs/*.jar,backend/build/jib-image.tar,build/deploy/backend/*.yaml', fingerprint: true
             }
         }
 
