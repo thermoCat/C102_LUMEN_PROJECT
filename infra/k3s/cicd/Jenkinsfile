@@ -42,7 +42,17 @@ pipeline {
         stage('Branch Policy') {
             steps {
                 script {
-                    def currentBranch = env.BRANCH_NAME ?: 'unknown'
+                    def currentBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
+                    if (currentBranch.startsWith('origin/')) {
+                        currentBranch = currentBranch - 'origin/'
+                    }
+                    if (currentBranch.startsWith('refs/remotes/origin/')) {
+                        currentBranch = currentBranch - 'refs/remotes/origin/'
+                    }
+                    if (currentBranch.startsWith('refs/heads/')) {
+                        currentBranch = currentBranch - 'refs/heads/'
+                    }
+                    env.RESOLVED_BRANCH = currentBranch
                     if (currentBranch != env.PRIMARY_BRANCH) {
                         error("This pipeline currently supports only the '${env.PRIMARY_BRANCH}' branch. Current branch: '${currentBranch}'")
                     }
@@ -195,6 +205,7 @@ pipeline {
                     set -eu
 
                     echo "Current branch is managed as the primary CI branch: ${PRIMARY_BRANCH}"
+                    echo "Resolved branch: ${RESOLVED_BRANCH:-unknown}"
                     echo "Backend test and bootJar stages completed."
                     echo "Resolved image tag: ${IMAGE_TAG}"
                     echo "Rendered image reference: ${BACKEND_IMAGE}"
