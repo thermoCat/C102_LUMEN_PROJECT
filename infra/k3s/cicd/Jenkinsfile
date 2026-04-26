@@ -14,9 +14,9 @@ pipeline {
         BACKEND_INGRESS_HOST = 'api.smartcane.com'
         BACKEND_IMAGE_REPOSITORY = 'kjw3568/smartcane-backend'
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
-        ENABLE_IMAGE_BUILD = 'false'
-        ENABLE_IMAGE_PUSH = 'false'
-        ENABLE_K8S_DEPLOY = 'false'
+        ENABLE_IMAGE_BUILD = 'true'
+        ENABLE_IMAGE_PUSH = 'true'
+        ENABLE_K8S_DEPLOY = 'true'
     }
 
     stages {
