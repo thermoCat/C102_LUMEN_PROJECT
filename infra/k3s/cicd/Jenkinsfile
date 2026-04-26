@@ -13,6 +13,7 @@ pipeline {
         K8S_NAMESPACE = 'smartcane'
         BACKEND_INGRESS_HOST = 'api.smartcane.com'
         BACKEND_IMAGE_REPOSITORY = 'change-me/backend-api'
+        DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
         ENABLE_IMAGE_BUILD = 'false'
         ENABLE_IMAGE_PUSH = 'false'
         ENABLE_K8S_DEPLOY = 'false'
@@ -140,11 +141,18 @@ pipeline {
                 expression { env.ENABLE_IMAGE_BUILD == 'true' && env.ENABLE_IMAGE_PUSH == 'true' }
             }
             steps {
-                sh '''
-                    set -eu
-                    command -v docker >/dev/null 2>&1
-                    docker push "${BACKEND_IMAGE}"
-                '''
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKER_REGISTRY_CREDENTIALS_ID}",
+                    usernameVariable: 'REGISTRY_USERNAME',
+                    passwordVariable: 'REGISTRY_PASSWORD'
+                )]) {
+                    sh '''
+                        set -eu
+                        command -v docker >/dev/null 2>&1
+                        echo "${REGISTRY_PASSWORD}" | docker login -u "${REGISTRY_USERNAME}" --password-stdin
+                        docker push "${BACKEND_IMAGE}"
+                    '''
+                }
             }
         }
 
@@ -193,6 +201,7 @@ pipeline {
                     echo "Image build enabled: ${ENABLE_IMAGE_BUILD}"
                     echo "Image push enabled: ${ENABLE_IMAGE_PUSH}"
                     echo "k3s deploy enabled: ${ENABLE_K8S_DEPLOY}"
+                    echo "Docker registry credential id: ${DOCKER_REGISTRY_CREDENTIALS_ID}"
                     echo "Deployment assumes Jenkins serviceAccount RBAC in namespace ${K8S_NAMESPACE}"
                 '''
             }
