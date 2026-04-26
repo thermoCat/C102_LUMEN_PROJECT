@@ -207,7 +207,34 @@ pipeline {
                       chmod +x "${KUBECTL_BIN}"
                     fi
 
+                    SERVICEACCOUNT_DIR="/var/run/secrets/kubernetes.io/serviceaccount"
+                    CLUSTER_CA="${SERVICEACCOUNT_DIR}/ca.crt"
+                    CLUSTER_TOKEN="$(cat "${SERVICEACCOUNT_DIR}/token")"
+                    KUBECONFIG_FILE="${WORKSPACE}/kubeconfig"
+
+                    cat > "${KUBECONFIG_FILE}" <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority: ${CLUSTER_CA}
+    server: https://kubernetes.default.svc
+  name: in-cluster
+contexts:
+- context:
+    cluster: in-cluster
+    namespace: ${K8S_NAMESPACE}
+    user: jenkins-serviceaccount
+  name: in-cluster
+current-context: in-cluster
+users:
+- name: jenkins-serviceaccount
+  user:
+    token: ${CLUSTER_TOKEN}
+EOF
+
                     export PATH="$(dirname "${KUBECTL_BIN}"):${PATH}"
+                    export KUBECONFIG="${KUBECONFIG_FILE}"
                     chmod +x infra/k3s/cicd/scripts/deploy-backend.sh
                     infra/k3s/cicd/scripts/deploy-backend.sh build/deploy/backend
                 '''
