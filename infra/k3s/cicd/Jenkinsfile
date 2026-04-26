@@ -69,6 +69,7 @@ pipeline {
                     test -f infra/k3s/cicd/jenkins-values.yaml
                     test -f infra/k3s/cicd/README.md
                     test -f infra/k3s/cicd/Jenkinsfile
+                    test -f infra/k3s/cicd/rbac/jenkins-smartcane-deployer.yaml
                     test -f infra/k3s/cicd/scripts/render-backend-manifests.sh
                     test -f infra/k3s/cicd/scripts/deploy-backend.sh
                     test -f infra/k3s/apps/backend/README.md
@@ -192,6 +193,7 @@ pipeline {
                     echo "Image build enabled: ${ENABLE_IMAGE_BUILD}"
                     echo "Image push enabled: ${ENABLE_IMAGE_PUSH}"
                     echo "k3s deploy enabled: ${ENABLE_K8S_DEPLOY}"
+                    echo "Deployment assumes Jenkins serviceAccount RBAC in namespace ${K8S_NAMESPACE}"
                 '''
             }
         }
