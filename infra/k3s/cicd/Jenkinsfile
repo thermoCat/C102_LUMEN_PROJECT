@@ -14,6 +14,7 @@ pipeline {
         BACKEND_INGRESS_HOST = 'api.smartcane.com'
         BACKEND_IMAGE_REPOSITORY = 'kjw3568/smartcane-backend'
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
+        KUBECTL_VERSION = 'v1.34.1'
         ENABLE_IMAGE_BUILD = 'true'
         ENABLE_IMAGE_PUSH = 'true'
         ENABLE_K8S_DEPLOY = 'true'
@@ -197,7 +198,16 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    command -v kubectl >/dev/null 2>&1
+
+                    if command -v kubectl >/dev/null 2>&1; then
+                      KUBECTL_BIN="$(command -v kubectl)"
+                    else
+                      KUBECTL_BIN="${WORKSPACE}/kubectl"
+                      curl -fsSL -o "${KUBECTL_BIN}" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+                      chmod +x "${KUBECTL_BIN}"
+                    fi
+
+                    export PATH="$(dirname "${KUBECTL_BIN}"):${PATH}"
                     chmod +x infra/k3s/cicd/scripts/deploy-backend.sh
                     infra/k3s/cicd/scripts/deploy-backend.sh build/deploy/backend
                 '''
