@@ -31,7 +31,8 @@ pipeline {
                 sh '''
                     set -eu
                     echo "Project: ${PROJECT_NAME}"
-                    echo "Branch: ${BRANCH_NAME:-unknown}"
+                    echo "Branch(BRANCH_NAME): ${BRANCH_NAME:-unknown}"
+                    echo "Branch(GIT_BRANCH): ${GIT_BRANCH:-unknown}"
                     echo "Workspace: $(pwd)"
                     echo "Top-level files:"
                     ls -la
@@ -124,7 +125,8 @@ pipeline {
             steps {
                 script {
                     def shortCommit = (env.GIT_COMMIT ?: 'local').take(7)
-                    env.IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}-${shortCommit}"
+                    def branchTag = env.RESOLVED_BRANCH ?: env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
+                    env.IMAGE_TAG = "${branchTag}-${env.BUILD_NUMBER}-${shortCommit}"
                     env.BACKEND_IMAGE = "${env.BACKEND_IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
                     echo "Resolved backend image: ${env.BACKEND_IMAGE}"
                 }
