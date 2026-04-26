@@ -8,6 +8,14 @@ pipeline {
 
     environment {
         PROJECT_NAME = 'S14P31C102'
+        PRIMARY_BRANCH = 'develop'
+        BACKEND_APP_DIR = 'backend'
+        K8S_NAMESPACE = 'smartcane'
+        BACKEND_INGRESS_HOST = 'api.smartcane.com'
+        BACKEND_IMAGE_REPOSITORY = 'change-me/backend-api'
+        ENABLE_IMAGE_BUILD = 'false'
+        ENABLE_IMAGE_PUSH = 'false'
+        ENABLE_K8S_DEPLOY = 'false'
     }
 
     stages {
@@ -30,33 +38,160 @@ pipeline {
             }
         }
 
+        stage('Branch Policy') {
+            steps {
+                script {
+                    def currentBranch = env.BRANCH_NAME ?: 'unknown'
+                    if (currentBranch != env.PRIMARY_BRANCH) {
+                        error("This pipeline currently supports only the '${env.PRIMARY_BRANCH}' branch. Current branch: '${currentBranch}'")
+                    }
+                    echo "Branch policy check passed for '${currentBranch}'."
+                }
+            }
+        }
+
         stage('Validate Required Files') {
             steps {
                 sh '''
                     set -eu
 
                     test -f README.MD
+                    test -f backend/build.gradle
+                    test -f backend/settings.gradle
+                    test -f backend/gradlew
+                    test -f backend/gradlew.bat
+                    test -f backend/gradle/wrapper/gradle-wrapper.jar
+                    test -f backend/gradle/wrapper/gradle-wrapper.properties
+                    test -f backend/Dockerfile
+                    test -f backend/src/main/java/com/smartcane/backend/SmartCaneBackendApplication.java
+                    test -f backend/src/test/java/com/smartcane/backend/SmartCaneBackendApplicationTests.java
+                    test -f backend/src/main/resources/application.properties
                     test -f infra/k3s/cicd/jenkins-values.yaml
                     test -f infra/k3s/cicd/README.md
                     test -f infra/k3s/cicd/Jenkinsfile
+                    test -f infra/k3s/cicd/scripts/render-backend-manifests.sh
+                    test -f infra/k3s/cicd/scripts/deploy-backend.sh
+                    test -f infra/k3s/apps/backend/README.md
+                    test -f infra/k3s/apps/backend/namespace.yaml
+                    test -f infra/k3s/apps/backend/configmap.yaml
+                    test -f infra/k3s/apps/backend/secret.example.yaml
+                    test -f infra/k3s/apps/backend/deployment.yaml
+                    test -f infra/k3s/apps/backend/service.yaml
+                    test -f infra/k3s/apps/backend/ingress.yaml
 
                     echo "Required repository files are present."
                 '''
             }
         }
 
-        stage('Show CI Targets') {
+        stage('Backend Test') {
+            steps {
+                dir("${BACKEND_APP_DIR}") {
+                    sh '''
+                        set -eu
+                        chmod +x gradlew
+                        ./gradlew --no-daemon test
+                    '''
+                }
+            }
+        }
+
+        stage('Backend BootJar') {
+            steps {
+                dir("${BACKEND_APP_DIR}") {
+                    sh '''
+                        set -eu
+                        chmod +x gradlew
+                        ./gradlew --no-daemon bootJar
+                    '''
+                }
+            }
+        }
+
+        stage('Prepare Release Metadata') {
+            steps {
+                script {
+                    def shortCommit = (env.GIT_COMMIT ?: 'local').take(7)
+                    env.IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}-${shortCommit}"
+                    env.BACKEND_IMAGE = "${env.BACKEND_IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
+                    echo "Resolved backend image: ${env.BACKEND_IMAGE}"
+                }
+            }
+        }
+
+        stage('Build Container Image') {
+            when {
+                expression { env.ENABLE_IMAGE_BUILD == 'true' }
+            }
+            steps {
+                dir("${BACKEND_APP_DIR}") {
+                    sh '''
+                        set -eu
+                        command -v docker >/dev/null 2>&1
+                        docker build -t "${BACKEND_IMAGE}" .
+                    '''
+                }
+            }
+        }
+
+        stage('Push Container Image') {
+            when {
+                expression { env.ENABLE_IMAGE_BUILD == 'true' && env.ENABLE_IMAGE_PUSH == 'true' }
+            }
+            steps {
+                sh '''
+                    set -eu
+                    command -v docker >/dev/null 2>&1
+                    docker push "${BACKEND_IMAGE}"
+                '''
+            }
+        }
+
+        stage('Render Backend Manifests') {
+            steps {
+                sh '''
+                    set -eu
+                    chmod +x infra/k3s/cicd/scripts/render-backend-manifests.sh
+                    BACKEND_IMAGE="${BACKEND_IMAGE}" \
+                    BACKEND_INGRESS_HOST="${BACKEND_INGRESS_HOST}" \
+                    K8S_NAMESPACE="${K8S_NAMESPACE}" \
+                    infra/k3s/cicd/scripts/render-backend-manifests.sh build/deploy/backend
+                '''
+            }
+        }
+
+        stage('Archive Build Outputs') {
+            steps {
+                archiveArtifacts artifacts: 'backend/build/libs/*.jar,build/deploy/backend/*.yaml', fingerprint: true
+            }
+        }
+
+        stage('Deploy To k3s') {
+            when {
+                expression { env.ENABLE_K8S_DEPLOY == 'true' }
+            }
+            steps {
+                sh '''
+                    set -eu
+                    command -v kubectl >/dev/null 2>&1
+                    chmod +x infra/k3s/cicd/scripts/deploy-backend.sh
+                    infra/k3s/cicd/scripts/deploy-backend.sh build/deploy/backend
+                '''
+            }
+        }
+
+        stage('Pipeline Summary') {
             steps {
                 sh '''
                     set -eu
 
-                    echo "Current repository does not yet contain app build sources."
-                    echo "This pipeline is acting as a bootstrap CI check."
-                    echo "When backend/app code is added, extend this Jenkinsfile with:"
-                    echo "  - test stage"
-                    echo "  - build stage"
-                    echo "  - image publish stage"
-                    echo "  - k3s deploy stage"
+                    echo "Current branch is managed as the primary CI branch: ${PRIMARY_BRANCH}"
+                    echo "Backend test and bootJar stages completed."
+                    echo "Resolved image tag: ${IMAGE_TAG}"
+                    echo "Rendered image reference: ${BACKEND_IMAGE}"
+                    echo "Image build enabled: ${ENABLE_IMAGE_BUILD}"
+                    echo "Image push enabled: ${ENABLE_IMAGE_PUSH}"
+                    echo "k3s deploy enabled: ${ENABLE_K8S_DEPLOY}"
                 '''
             }
         }
