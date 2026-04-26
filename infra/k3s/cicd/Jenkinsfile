@@ -12,7 +12,7 @@ pipeline {
         BACKEND_APP_DIR = 'backend'
         K8S_NAMESPACE = 'smartcane'
         BACKEND_INGRESS_HOST = 'api.smartcane.com'
-        BACKEND_IMAGE_REPOSITORY = 'change-me/backend-api'
+        BACKEND_IMAGE_REPOSITORY = 'kjw3568/smartcane-backend'
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
         ENABLE_IMAGE_BUILD = 'false'
         ENABLE_IMAGE_PUSH = 'false'

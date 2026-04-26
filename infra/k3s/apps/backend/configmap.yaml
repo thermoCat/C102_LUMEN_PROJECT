@@ -7,10 +7,10 @@ data:
   SPRING_PROFILES_ACTIVE: prod
   POSTGRES_HOST: rds-postgres-stg.ssafyapp.com
   POSTGRES_PORT: "5432"
-  POSTGRES_DB: change-me
+  POSTGRES_DB: "lumen102"
   MYSQL_HOST: rds-stg.ssafyapp.com
   MYSQL_PORT: "3306"
-  MYSQL_DB: change-me
+  MYSQL_DB: "lumen102"
   REDIS_HOST: redis-stg.ssafyapp.com
   REDIS_PORT: "6379"
   AWS_REGION: ap-northeast-2
