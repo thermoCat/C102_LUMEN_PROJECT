@@ -15,4 +15,4 @@ data:
   REDIS_PORT: "6379"
   AWS_REGION: ap-northeast-2
   S3_BUCKET: ssafyapp-stg-project-prv-data
-  S3_PREFIX: 7rat8/
+  S3_PREFIX: 7rart8

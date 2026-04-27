@@ -3,6 +3,8 @@ kind: Ingress
 metadata:
   name: backend-ingress
   namespace: smartcane
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: smartcane-backend-strip-prefix@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
