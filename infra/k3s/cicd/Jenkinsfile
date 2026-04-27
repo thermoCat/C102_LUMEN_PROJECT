@@ -92,6 +92,8 @@ pipeline {
                     test -f infra/k3s/apps/backend/secret.example.yaml
                     test -f infra/k3s/apps/backend/deployment.yaml
                     test -f infra/k3s/apps/backend/service.yaml
+                    test -f infra/k3s/apps/backend/hpa.yaml
+                    test -f infra/k3s/apps/backend/pdb.yaml
                     test -f infra/k3s/apps/backend/middleware.yaml
                     test -f infra/k3s/apps/backend/ingress.yaml
 

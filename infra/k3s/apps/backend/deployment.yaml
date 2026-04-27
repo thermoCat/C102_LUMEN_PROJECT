@@ -13,8 +13,34 @@ spec:
       labels:
         app: backend-api
     spec:
+      terminationGracePeriodSeconds: 30
       nodeSelector:
         node.smartcane/role: app
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node.smartcane/role
+                    operator: In
+                    values:
+                      - app
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: backend-api
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: backend-api
       containers:
         - name: backend-api
           image: change-me/backend-api:latest

@@ -5,8 +5,13 @@ metadata:
   namespace: smartcane
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: smartcane-backend-strip-prefix@kubernetescrd
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.smartcane.com
+      secretName: backend-api-tls
   rules:
     - host: api.smartcane.com
       http:
