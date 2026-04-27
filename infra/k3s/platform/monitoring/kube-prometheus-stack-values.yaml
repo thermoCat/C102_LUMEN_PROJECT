@@ -1,0 +1,43 @@
+grafana:
+  adminPassword: change-me-grafana-admin-password
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - grafana.smartcane.com
+    path: /
+    pathType: Prefix
+
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - prometheus.smartcane.com
+    paths:
+      - /
+  prometheusSpec:
+    retention: 10d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+
+alertmanager:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - alertmanager.smartcane.com
+    paths:
+      - /
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true

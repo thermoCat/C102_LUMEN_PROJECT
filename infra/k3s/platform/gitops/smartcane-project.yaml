@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: smartcane
+  namespace: argocd
+spec:
+  description: SmartCane platform workloads
+  sourceRepos:
+    - https://lab.ssafy.com/s14-final/S14P31C102.git
+  destinations:
+    - namespace: smartcane
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
