@@ -4,8 +4,8 @@ grafana:
     enabled: true
     ingressClassName: traefik
     hosts:
-      - grafana.smartcane.com
-    path: /
+      - k14c102.p.ssafy.io
+    path: /grafana
     pathType: Prefix
 
 prometheus:
@@ -13,9 +13,9 @@ prometheus:
     enabled: true
     ingressClassName: traefik
     hosts:
-      - prometheus.smartcane.com
+      - k14c102.p.ssafy.io
     paths:
-      - /
+      - /prometheus
   prometheusSpec:
     retention: 10d
     storageSpec:
@@ -32,9 +32,9 @@ alertmanager:
     enabled: true
     ingressClassName: traefik
     hosts:
-      - alertmanager.smartcane.com
+      - k14c102.p.ssafy.io
     paths:
-      - /
+      - /alertmanager
 
 kubeStateMetrics:
   enabled: true

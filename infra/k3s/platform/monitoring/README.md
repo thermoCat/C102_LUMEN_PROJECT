@@ -9,6 +9,14 @@
 - Alertmanager 기반 알림 연동 준비
 - ingress 및 리소스 포화도 확인
 
+현재 호스트 정책:
+
+- 별도 구매 도메인이 없으므로 `k14c102.p.ssafy.io` 단일 호스트를 사용
+- 경로 기반으로 분리
+  - Grafana: `/grafana`
+  - Prometheus: `/prometheus`
+  - Alertmanager: `/alertmanager`
+
 권장 설치 순서:
 
 ```bash

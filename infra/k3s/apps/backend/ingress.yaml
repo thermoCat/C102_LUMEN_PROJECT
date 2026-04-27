@@ -10,10 +10,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - api.smartcane.com
+        - k14c102.p.ssafy.io
       secretName: backend-api-tls
   rules:
-    - host: api.smartcane.com
+    - host: k14c102.p.ssafy.io
       http:
         paths:
           - path: /api

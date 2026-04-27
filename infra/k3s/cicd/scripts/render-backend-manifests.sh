@@ -4,7 +4,7 @@ set -eu
 OUTPUT_DIR="${1:-build/deploy/backend}"
 NAMESPACE="${K8S_NAMESPACE:-smartcane}"
 IMAGE="${BACKEND_IMAGE:-change-me/backend-api:latest}"
-INGRESS_HOST="${BACKEND_INGRESS_HOST:-api.smartcane.com}"
+INGRESS_HOST="${BACKEND_INGRESS_HOST:-k14c102.p.ssafy.io}"
 
 SOURCE_DIR="infra/k3s/apps/backend"
 
@@ -25,7 +25,7 @@ sed \
 
 sed \
   -e "s|namespace: smartcane|namespace: ${NAMESPACE}|g" \
-  -e "s|host: api.smartcane.com|host: ${INGRESS_HOST}|g" \
+  -e "s|host: k14c102.p.ssafy.io|host: ${INGRESS_HOST}|g" \
   "${SOURCE_DIR}/ingress.yaml" > "${OUTPUT_DIR}/ingress.yaml"
 
 echo "Rendered backend manifests into ${OUTPUT_DIR}"

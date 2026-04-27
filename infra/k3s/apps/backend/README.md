@@ -27,7 +27,7 @@
 - `middleware.yaml`
   - Traefik `/api` prefix 제거
 - `ingress.yaml`
-  - 외부 도메인 라우팅 및 TLS 설정
+  - 외부 호스트 `k14c102.p.ssafy.io` 라우팅 및 TLS 설정
 - `hpa.yaml`
   - CPU/메모리 기준 수평 확장 정책
 - `pdb.yaml`

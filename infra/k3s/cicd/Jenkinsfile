@@ -11,7 +11,7 @@ pipeline {
         PRIMARY_BRANCH = 'develop'
         BACKEND_APP_DIR = 'backend'
         K8S_NAMESPACE = 'smartcane'
-        BACKEND_INGRESS_HOST = 'api.smartcane.com'
+        BACKEND_INGRESS_HOST = 'k14c102.p.ssafy.io'
         BACKEND_IMAGE_REPOSITORY = 'kjw3568/smartcane-backend'
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
         KUBECTL_VERSION = 'v1.34.1'
