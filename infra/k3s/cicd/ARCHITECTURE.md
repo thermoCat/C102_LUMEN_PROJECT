@@ -309,8 +309,8 @@ Ingress는 **외부에서 들어온 HTTP/HTTPS 요청을 어떤 서비스로 보
 또는
 
 ```text
-api.smartcane.com   -> backend-service
-admin.smartcane.com -> admin-service
+k14c102.p.ssafy.io  -> backend-service
+(admin route reserved for future use)
 ```
 
 즉 Ingress는:

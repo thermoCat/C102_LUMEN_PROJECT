@@ -1,15 +1,12 @@
 provider: aws
 policy: sync
 registry: txt
-txtOwnerId: smartcane-k3s
+txtOwnerId: k14c102-p-ssafy-io
 interval: 1m
 
 serviceAccount:
   create: true
   name: external-dns
-
-domainFilters:
-  - smartcane.com
 
 sources:
   - ingress

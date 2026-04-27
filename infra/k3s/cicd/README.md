@@ -37,3 +37,4 @@
 - 자동 빌드/배포 동작 중
 - 외부 health check 성공
 - `/api` ingress rewrite 적용 완료
+- 현재 백엔드 접근 호스트: `k14c102.p.ssafy.io`

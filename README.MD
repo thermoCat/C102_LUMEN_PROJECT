@@ -27,7 +27,7 @@
 - GitLab push 기반 Jenkins 자동 실행
 - Docker Hub 이미지 빌드/푸시
 - k3s 자동 배포
-- Traefik ingress 외부 health check 확인 완료
+- Traefik ingress 외부 health check 확인 완료 (`k14c102.p.ssafy.io`)
 - PostgreSQL PostGIS 활성화 완료
 
 다음 단계:
