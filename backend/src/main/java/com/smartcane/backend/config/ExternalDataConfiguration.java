@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -14,11 +15,13 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 @Configuration
 public class ExternalDataConfiguration {
 
     @Bean
+    @Primary
     @Qualifier("postgresDataSource")
     @ConditionalOnExpression("'${app.datasource.postgres.host:}' != ''")
     public DataSource postgresDataSource(PostgresProperties properties) {
@@ -69,6 +72,24 @@ public class ExternalDataConfiguration {
     )
     public S3Client s3Client(AwsProperties properties) {
         return S3Client.builder()
+            .region(Region.of(properties.getRegion()))
+            .credentialsProvider(
+                StaticCredentialsProvider.create(
+                    AwsBasicCredentials.create(
+                        properties.getAccessKeyId(),
+                        properties.getSecretAccessKey()
+                    )
+                )
+            )
+            .build();
+    }
+
+    @Bean
+    @ConditionalOnExpression(
+        "'${app.aws.access-key-id:}' != '' and '${app.aws.secret-access-key:}' != ''"
+    )
+    public S3Presigner s3Presigner(AwsProperties properties) {
+        return S3Presigner.builder()
             .region(Region.of(properties.getRegion()))
             .credentialsProvider(
                 StaticCredentialsProvider.create(
