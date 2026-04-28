@@ -165,18 +165,24 @@ function makeStyle(type) {
 }
 
 let hazardDebounceTimer = null;
+let hazardFetching = false;
 
 function loadHazards() {
+  if (hazardFetching) return;
+  const size = map.getSize();
+  if (!size || size[0] === 0 || size[1] === 0) return;
+
   const extent = ol.proj.transformExtent(
-    map.getView().calculateExtent(map.getSize()),
+    map.getView().calculateExtent(size),
     'EPSG:3857', 'EPSG:4326'
   );
   const type = document.getElementById('typeFilter').value;
   let url = `/api/hazards?minLng=${extent[0]}&minLat=${extent[1]}&maxLng=${extent[2]}&maxLat=${extent[3]}`;
   if (type) url += `&type=${type}`;
 
+  hazardFetching = true;
   fetch(url)
-    .then(r => r.json())
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(geojson => {
       hazardSource.clear();
       geojson.features.forEach(f => {
@@ -190,7 +196,8 @@ function loadHazards() {
       });
       document.getElementById('count').textContent = geojson.totalCount;
     })
-    .catch(e => console.error('API 오류:', e));
+    .catch(e => console.error('API 오류:', e))
+    .finally(() => { hazardFetching = false; });
 }
 
 function loadHazardsDebounced() {
