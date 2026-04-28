@@ -23,7 +23,7 @@ import java.util.Map;
 
 @Tag(name = "Hazard", description = "위험구간 수집 및 공공 API")
 @RestController
-@RequestMapping("/api/hazards")
+@RequestMapping("/hazards")
 public class HazardController {
 
     private static final Logger log = LoggerFactory.getLogger(HazardController.class);

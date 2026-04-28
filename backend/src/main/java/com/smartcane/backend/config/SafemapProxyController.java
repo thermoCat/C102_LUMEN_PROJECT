@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Tag(name = "safemap-proxy-controller", description = "행안부 생활안전지도 WMS 타일 프록시. API 키를 서버에서 관리하며 앱의 CORS 문제를 해결하고 5분 인메모리 캐시로 중복 요청을 줄입니다.")
 @RestController
-@RequestMapping("/api/proxy/safemap")
+@RequestMapping("/proxy/safemap")
 public class SafemapProxyController {
 
     private static final Logger log = LoggerFactory.getLogger(SafemapProxyController.class);
