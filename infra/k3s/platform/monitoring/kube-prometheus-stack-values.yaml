@@ -2,13 +2,19 @@ grafana:
   adminPassword: change-me-grafana-admin-password
   grafana.ini:
     server:
-      root_url: http://k14c102.p.ssafy.io/grafana
+      root_url: https://k14c102.p.ssafy.io/grafana
       serve_from_sub_path: true
   ingress:
     enabled: true
     ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - k14c102.p.ssafy.io
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - k14c102.p.ssafy.io
     path: /grafana
     pathType: Prefix
 
@@ -16,12 +22,18 @@ prometheus:
   ingress:
     enabled: true
     ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - k14c102.p.ssafy.io
+    tls:
+      - secretName: prometheus-tls
+        hosts:
+          - k14c102.p.ssafy.io
     paths:
       - /prometheus
   prometheusSpec:
-    externalUrl: http://k14c102.p.ssafy.io/prometheus
+    externalUrl: https://k14c102.p.ssafy.io/prometheus
     routePrefix: /prometheus
     retention: 10d
     storageSpec:
@@ -37,12 +49,18 @@ alertmanager:
   ingress:
     enabled: true
     ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - k14c102.p.ssafy.io
+    tls:
+      - secretName: alertmanager-tls
+        hosts:
+          - k14c102.p.ssafy.io
     paths:
       - /alertmanager
   alertmanagerSpec:
-    externalUrl: http://k14c102.p.ssafy.io/alertmanager
+    externalUrl: https://k14c102.p.ssafy.io/alertmanager
     routePrefix: /alertmanager
 
 kubeStateMetrics:
