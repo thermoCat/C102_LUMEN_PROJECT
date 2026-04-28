@@ -108,8 +108,11 @@ public class ExternalDataConfiguration {
         config.setJdbcUrl(jdbcUrl);
         config.setUsername(username);
         config.setPassword(password);
-        config.setMaximumPoolSize(3);
-        config.setMinimumIdle(0);
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setConnectionTimeout(5000);
+        config.setKeepaliveTime(60000);
+        config.setMaxLifetime(1800000);
         config.setInitializationFailTimeout(-1);
         config.setPoolName(driverClassName + "-pool");
         return new HikariDataSource(config);
