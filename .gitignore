@@ -34,6 +34,7 @@ kubeconfig.*
 *.kubeconfig
 infra/k3s/apps/**/secret.yaml
 infra/k3s/apps/**/secrets.yaml
+infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
 !infra/k3s/apps/**/secret.example.yaml
 !infra/k3s/apps/**/secrets.example.yaml
 

@@ -1,0 +1,44 @@
+grafana:
+  # Copy this file to kube-prometheus-stack-values.prod.yaml and replace with the real password.
+  adminPassword: change-me-grafana-admin-password
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - k14c102.p.ssafy.io
+    path: /grafana
+    pathType: Prefix
+
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - k14c102.p.ssafy.io
+    paths:
+      - /prometheus
+  prometheusSpec:
+    retention: 10d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+
+alertmanager:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - k14c102.p.ssafy.io
+    paths:
+      - /alertmanager
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true

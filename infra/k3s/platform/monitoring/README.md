@@ -1,23 +1,35 @@
-# 모니터링 구성
+# 모니터링
 
-이 디렉터리는 `kube-prometheus-stack` 기준의 모니터링 설치값을 제공합니다.
+이 디렉터리는 `kube-prometheus-stack` 기준의 모니터링 설치 파일을 제공합니다.
 
-설치 목표:
+구성 요소:
 
-- 클러스터/노드/파드 메트릭 수집
-- Grafana 대시보드 제공
-- Alertmanager 기반 알림 연동 준비
-- ingress 및 리소스 포화도 확인
+- Prometheus
+- Grafana
+- Alertmanager
+- kube-state-metrics
+- node-exporter
 
-현재 호스트 정책:
+현재 라우팅 경로:
 
-- 별도 구매 도메인이 없으므로 `k14c102.p.ssafy.io` 단일 호스트를 사용
-- 경로 기반으로 분리
-  - Grafana: `/grafana`
-  - Prometheus: `/prometheus`
-  - Alertmanager: `/alertmanager`
+- Grafana: `http://k14c102.p.ssafy.io/grafana`
+- Prometheus: `http://k14c102.p.ssafy.io/prometheus`
+- Alertmanager: `http://k14c102.p.ssafy.io/alertmanager`
 
-권장 설치 순서:
+공용 파일과 운영 파일 분리:
+
+- Git에 올리는 공용 템플릿은 [kube-prometheus-stack-values.yaml](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\platform\monitoring\kube-prometheus-stack-values.yaml) 입니다.
+- 실제 Grafana 관리자 비밀번호는 Git에 올리지 말고, [kube-prometheus-stack-values.prod.example.yaml](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\platform\monitoring\kube-prometheus-stack-values.prod.example.yaml)을 복사해서 `kube-prometheus-stack-values.prod.yaml` 로 만든 뒤 그 파일에만 넣습니다.
+- `kube-prometheus-stack-values.prod.yaml` 은 `.gitignore` 에 등록되어 있어 커밋되지 않습니다.
+
+운영 파일 생성 예시:
+
+```bash
+cp infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.example.yaml \
+  infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
+```
+
+설치 순서:
 
 ```bash
 kubectl create namespace monitoring
@@ -25,12 +37,19 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm repo update
 helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
-  -f infra/k3s/platform/monitoring/kube-prometheus-stack-values.yaml
+  -f infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
 ```
 
-설치 후 추가 권장 항목:
+설치 후 확인:
 
-- backend pod 재시작 알림
-- CPU/메모리 사용량 알림
-- ingress 5xx 알림
-- Jenkins 빌드 실패 알림
+```bash
+kubectl get pods -n monitoring
+kubectl get ingress -n monitoring
+```
+
+추가로 보면 좋은 항목:
+
+- backend pod 상태
+- 노드 CPU/메모리 사용량
+- ingress 5xx
+- Jenkins 상태
