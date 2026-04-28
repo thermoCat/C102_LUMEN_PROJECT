@@ -262,7 +262,22 @@ function loadHazardsDebounced() {
     });
 
     map.on('moveend', loadHazardsDebounced);
-    loadHazards();
+
+    // 맵이 완전히 렌더된 후 최초 1회 로드 (getSize()가 [0,0]인 타이밍 버그 방지)
+    map.once('rendercomplete', loadHazards);
+
+    // GPS로 초기 위치 이동 후 마커 로드
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          map.getView().animate(
+            { center: ol.proj.fromLonLat([pos.coords.longitude, pos.coords.latitude]), zoom: 16, duration: 500 },
+            () => loadHazards()
+          );
+        },
+        () => { /* 권한 거부 시 기본 좌표 유지, rendercomplete에서 로드 */ }
+      );
+    }
 
     setInterval(loadHazards, 10000);
 }());
