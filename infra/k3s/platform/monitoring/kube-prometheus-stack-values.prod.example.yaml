@@ -8,12 +8,14 @@ grafana:
   ingress:
     enabled: true
     ingressClassName: traefik
+    # Use a single host-level certificate for monitoring to avoid duplicate
+    # ACME orders on the same host/path-based ingress setup.
     annotations:
       cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - k14c102.p.ssafy.io
     tls:
-      - secretName: grafana-tls
+      - secretName: monitoring-shared-tls
         hosts:
           - k14c102.p.ssafy.io
     path: /grafana
@@ -23,14 +25,8 @@ prometheus:
   ingress:
     enabled: true
     ingressClassName: traefik
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - k14c102.p.ssafy.io
-    tls:
-      - secretName: prometheus-tls
-        hosts:
-          - k14c102.p.ssafy.io
     paths:
       - /prometheus
   prometheusSpec:
@@ -50,14 +46,8 @@ alertmanager:
   ingress:
     enabled: true
     ingressClassName: traefik
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - k14c102.p.ssafy.io
-    tls:
-      - secretName: alertmanager-tls
-        hosts:
-          - k14c102.p.ssafy.io
     paths:
       - /alertmanager
   alertmanagerSpec:
