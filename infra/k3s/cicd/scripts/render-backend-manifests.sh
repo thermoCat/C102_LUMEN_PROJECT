@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+OUTPUT_DIR="${1:-build/deploy/backend}"
+NAMESPACE="${K8S_NAMESPACE:-smartcane}"
+IMAGE="${BACKEND_IMAGE:-change-me/backend-api:latest}"
+INGRESS_HOST="${BACKEND_INGRESS_HOST:-k14c102.p.ssafy.io}"
+
+SOURCE_DIR="infra/k3s/apps/backend"
+
+mkdir -p "${OUTPUT_DIR}"
+
+cp "${SOURCE_DIR}/namespace.yaml" "${OUTPUT_DIR}/namespace.yaml"
+cp "${SOURCE_DIR}/configmap.yaml" "${OUTPUT_DIR}/configmap.yaml"
+cp "${SOURCE_DIR}/service.yaml" "${OUTPUT_DIR}/service.yaml"
+cp "${SOURCE_DIR}/secret.example.yaml" "${OUTPUT_DIR}/secret.example.yaml"
+cp "${SOURCE_DIR}/middleware.yaml" "${OUTPUT_DIR}/middleware.yaml"
+cp "${SOURCE_DIR}/hpa.yaml" "${OUTPUT_DIR}/hpa.yaml"
+cp "${SOURCE_DIR}/pdb.yaml" "${OUTPUT_DIR}/pdb.yaml"
+
+sed \
+  -e "s|namespace: smartcane|namespace: ${NAMESPACE}|g" \
+  -e "s|image: change-me/backend-api:latest|image: ${IMAGE}|g" \
+  "${SOURCE_DIR}/deployment.yaml" > "${OUTPUT_DIR}/deployment.yaml"
+
+sed \
+  -e "s|namespace: smartcane|namespace: ${NAMESPACE}|g" \
+  -e "s|host: k14c102.p.ssafy.io|host: ${INGRESS_HOST}|g" \
+  "${SOURCE_DIR}/ingress.yaml" > "${OUTPUT_DIR}/ingress.yaml"
+
+echo "Rendered backend manifests into ${OUTPUT_DIR}"

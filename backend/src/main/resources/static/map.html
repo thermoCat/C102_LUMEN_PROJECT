@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>SmartCane 위험지도</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
+  <script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; }
+
+    #header {
+      padding: 12px 20px;
+      background: #16213e;
+      border-bottom: 2px solid #0f3460;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #header h1 { font-size: 18px; color: #e94560; }
+    #header span { font-size: 13px; color: #aaa; }
+
+    #controls {
+      padding: 10px 20px;
+      background: #16213e;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    select, button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #0f3460;
+      background: #0f3460;
+      color: #eee;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: #e94560; border-color: #e94560; }
+    .toggle-btn { transition: opacity 0.2s; }
+    .toggle-btn.off { opacity: 0.4; }
+    #status { font-size: 12px; color: #aaa; margin-left: auto; }
+    #count { color: #e94560; font-weight: bold; }
+
+    #map { width: 100%; height: calc(100vh - 100px); }
+
+    #popup {
+      position: absolute;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 12px 16px;
+      min-width: 200px;
+      font-size: 13px;
+      pointer-events: none;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    #popup h3 { color: #e94560; margin-bottom: 8px; font-size: 14px; }
+    #popup p { margin: 4px 0; color: #ccc; }
+    #popup strong { color: #eee; }
+    #popup-img { width: 200px; height: 150px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; display: none; }
+
+    .legend {
+      position: absolute;
+      bottom: 30px;
+      left: 20px;
+      background: rgba(22,33,62,0.9);
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      z-index: 100;
+    }
+    .legend h4 { margin-bottom: 8px; color: #aaa; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>SmartCane 위험지도</h1>
+  <span>시각장애인 보행 보조 서비스</span>
+</div>
+
+<div id="controls">
+  <label style="font-size:13px;color:#aaa">유형 필터:</label>
+  <select id="typeFilter" onchange="loadHazards()">
+    <option value="">전체</option>
+    <option value="OBSTACLE">장애물</option>
+    <option value="HAZARD_STEP">단차</option>
+    <option value="HAZARD_STAIR">계단</option>
+    <option value="HAZARD_SLOPE">경사로</option>
+    <option value="DAMAGED_PAVEMENT">파손 보도</option>
+  </select>
+  <button onclick="loadHazards()">새로고침</button>
+  <button id="btn-sidewalk" class="toggle-btn" onclick="toggleLayer('sidewalk')">인도 ON</button>
+  <button id="btn-crosswalk" class="toggle-btn" onclick="toggleLayer('crosswalk')">횡단보도 ON</button>
+  <div id="status">위험구간: <span id="count">0</span>개</div>
+</div>
+
+<div id="map"></div>
+<div id="popup">
+  <img id="popup-img" src="" alt="위험 이미지">
+  <h3 id="popup-type"></h3>
+  <p>신뢰도: <strong id="popup-confidence"></strong></p>
+  <p>설명: <strong id="popup-desc"></strong></p>
+  <p>시각: <strong id="popup-time"></strong></p>
+</div>
+
+<div class="legend">
+  <h4>위험 유형</h4>
+  <div class="legend-item"><div class="legend-dot" style="background:#f44336"></div> 장애물</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff5722"></div> 단차</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff9800"></div> 계단</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div> 경사로</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#e91e63"></div> 파손 보도</div>
+</div>
+
+<script>
+const COLORS = {
+  OBSTACLE:         '#f44336',
+  HAZARD_STEP:      '#ff5722',
+  HAZARD_STAIR:     '#ff9800',
+  HAZARD_SLOPE:     '#ffc107',
+  DAMAGED_PAVEMENT: '#e91e63'
+};
+const TYPE_KO = {
+  OBSTACLE:         '장애물',
+  HAZARD_STEP:      '단차',
+  HAZARD_STAIR:     '계단',
+  HAZARD_SLOPE:     '경사로',
+  DAMAGED_PAVEMENT: '파손 보도'
+};
+
+const osmLayer = new ol.layer.Tile({
+  source: new ol.source.OSM()
+});
+
+const hazardSource = new ol.source.Vector();
+const hazardLayer = new ol.layer.Vector({ source: hazardSource });
+
+let map, sidewalkLayer, crosswalkLayer;
+
+function toggleLayer(name) {
+  const layer = name === 'sidewalk' ? sidewalkLayer : crosswalkLayer;
+  const btn = document.getElementById('btn-' + name);
+  const visible = !layer.getVisible();
+  layer.setVisible(visible);
+  btn.textContent = (name === 'sidewalk' ? '인도 ' : '횡단보도 ') + (visible ? 'ON' : 'OFF');
+  btn.classList.toggle('off', !visible);
+}
+
+function makeStyle(type) {
+  return new ol.style.Style({
+    image: new ol.style.Circle({
+      radius: 10,
+      fill: new ol.style.Fill({ color: COLORS[type] || '#999' }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 2 })
+    })
+  });
+}
+
+let hazardDebounceTimer = null;
+
+function loadHazards() {
+  const extent = ol.proj.transformExtent(
+    map.getView().calculateExtent(map.getSize()),
+    'EPSG:3857', 'EPSG:4326'
+  );
+  const type = document.getElementById('typeFilter').value;
+  let url = `/api/hazards?minLng=${extent[0]}&minLat=${extent[1]}&maxLng=${extent[2]}&maxLat=${extent[3]}`;
+  if (type) url += `&type=${type}`;
+
+  fetch(url)
+    .then(r => r.json())
+    .then(geojson => {
+      hazardSource.clear();
+      geojson.features.forEach(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        const feature = new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat])),
+          props: f.properties
+        });
+        feature.setStyle(makeStyle(f.properties.type));
+        hazardSource.addFeature(feature);
+      });
+      document.getElementById('count').textContent = geojson.totalCount;
+    })
+    .catch(e => console.error('API 오류:', e));
+}
+
+function loadHazardsDebounced() {
+  clearTimeout(hazardDebounceTimer);
+  hazardDebounceTimer = setTimeout(loadHazards, 300);
+}
+
+(function initMap() {
+
+    sidewalkLayer = new ol.layer.Tile({
+      visible: true,
+      opacity: 0.7,
+      source: new ol.source.TileWMS({
+        url: '/api/proxy/safemap',
+        params: {
+          LAYERS: 'A2SM_RBLNG_1',
+          STYLES: 'A2SM_RBLNG_1',
+          FORMAT: 'image/png',
+          TRANSPARENT: 'TRUE',
+          SRS: 'EPSG:3857'
+        }
+      })
+    });
+
+    crosswalkLayer = new ol.layer.Tile({
+      visible: true,
+      opacity: 0.8,
+      source: new ol.source.TileWMS({
+        url: '/api/proxy/safemap',
+        params: {
+          LAYERS: 'A2SM_RBLNG_3',
+          STYLES: 'A2SM_RBLNG_3',
+          FORMAT: 'image/png',
+          TRANSPARENT: 'TRUE',
+          SRS: 'EPSG:3857'
+        }
+      })
+    });
+
+    map = new ol.Map({
+      target: 'map',
+      layers: [osmLayer, sidewalkLayer, crosswalkLayer, hazardLayer],
+      view: new ol.View({
+        center: ol.proj.fromLonLat([126.8099, 35.2024]),
+        zoom: 16
+      })
+    });
+
+    const popup = document.getElementById('popup');
+    map.on('pointermove', e => {
+      const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
+      if (feature) {
+        const p = feature.get('props');
+        document.getElementById('popup-type').textContent = TYPE_KO[p.type] || p.type;
+        document.getElementById('popup-confidence').textContent = p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '-';
+        document.getElementById('popup-desc').textContent = p.description || '-';
+        document.getElementById('popup-time').textContent = p.reportedAt ? p.reportedAt.replace('T', ' ').substring(0, 19) : '-';
+        const img = document.getElementById('popup-img');
+        if (p.imageUrl) { img.src = `/api/hazards/image?s3Url=${encodeURIComponent(p.imageUrl)}`; img.style.display = 'block'; }
+        else { img.style.display = 'none'; }
+        popup.style.display = 'block';
+        popup.style.left = (e.pixel[0] + 15) + 'px';
+        popup.style.top  = (e.pixel[1] - 10) + 'px';
+        map.getTargetElement().style.cursor = 'pointer';
+      } else {
+        popup.style.display = 'none';
+        map.getTargetElement().style.cursor = '';
+      }
+    });
+
+    map.on('moveend', loadHazardsDebounced);
+    loadHazards();
+
+    setInterval(loadHazards, 10000);
+}());
+</script>
+</body>
+</html>

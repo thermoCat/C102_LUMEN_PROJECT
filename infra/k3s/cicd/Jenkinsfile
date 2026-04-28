@@ -1,0 +1,281 @@
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        PROJECT_NAME = 'S14P31C102'
+        PRIMARY_BRANCH = 'develop'
+        BACKEND_APP_DIR = 'backend'
+        K8S_NAMESPACE = 'smartcane'
+        BACKEND_INGRESS_HOST = 'k14c102.p.ssafy.io'
+        BACKEND_IMAGE_REPOSITORY = 'kjw3568/smartcane-backend'
+        DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
+        KUBECTL_VERSION = 'v1.34.1'
+        K8S_API_SERVER = 'https://172.26.4.199:6443'
+        ENABLE_IMAGE_BUILD = 'true'
+        ENABLE_IMAGE_PUSH = 'true'
+        ENABLE_K8S_DEPLOY = 'true'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Repository Check') {
+            steps {
+                sh '''
+                    set -eu
+                    echo "Project: ${PROJECT_NAME}"
+                    echo "Branch(BRANCH_NAME): ${BRANCH_NAME:-unknown}"
+                    echo "Branch(GIT_BRANCH): ${GIT_BRANCH:-unknown}"
+                    echo "Workspace: $(pwd)"
+                    echo "Top-level files:"
+                    ls -la
+                '''
+            }
+        }
+
+        stage('Branch Policy') {
+            steps {
+                script {
+                    def currentBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
+                    if (currentBranch.startsWith('origin/')) {
+                        currentBranch = currentBranch - 'origin/'
+                    }
+                    if (currentBranch.startsWith('refs/remotes/origin/')) {
+                        currentBranch = currentBranch - 'refs/remotes/origin/'
+                    }
+                    if (currentBranch.startsWith('refs/heads/')) {
+                        currentBranch = currentBranch - 'refs/heads/'
+                    }
+                    env.RESOLVED_BRANCH = currentBranch
+                    if (currentBranch != env.PRIMARY_BRANCH) {
+                        error("This pipeline currently supports only the '${env.PRIMARY_BRANCH}' branch. Current branch: '${currentBranch}'")
+                    }
+                    echo "Branch policy check passed for '${currentBranch}'."
+                }
+            }
+        }
+
+        stage('Validate Required Files') {
+            steps {
+                sh '''
+                    set -eu
+
+                    test -f README.MD
+                    test -f backend/build.gradle
+                    test -f backend/settings.gradle
+                    test -f backend/gradlew
+                    test -f backend/gradlew.bat
+                    test -f backend/gradle/wrapper/gradle-wrapper.jar
+                    test -f backend/gradle/wrapper/gradle-wrapper.properties
+                    test -f backend/Dockerfile
+                    test -f backend/src/main/java/com/smartcane/backend/SmartCaneBackendApplication.java
+                    test -f backend/src/test/java/com/smartcane/backend/SmartCaneBackendApplicationTests.java
+                    test -f backend/src/main/resources/application.properties
+                    test -f infra/k3s/cicd/jenkins-values.yaml
+                    test -f infra/k3s/cicd/README.md
+                    test -f infra/k3s/cicd/Jenkinsfile
+                    test -f infra/k3s/cicd/rbac/jenkins-smartcane-deployer.yaml
+                    test -f infra/k3s/cicd/scripts/render-backend-manifests.sh
+                    test -f infra/k3s/cicd/scripts/deploy-backend.sh
+                    test -f infra/k3s/apps/backend/README.md
+                    test -f infra/k3s/apps/backend/namespace.yaml
+                    test -f infra/k3s/apps/backend/configmap.yaml
+                    test -f infra/k3s/apps/backend/secret.example.yaml
+                    test -f infra/k3s/apps/backend/deployment.yaml
+                    test -f infra/k3s/apps/backend/service.yaml
+                    test -f infra/k3s/apps/backend/hpa.yaml
+                    test -f infra/k3s/apps/backend/pdb.yaml
+                    test -f infra/k3s/apps/backend/middleware.yaml
+                    test -f infra/k3s/apps/backend/ingress.yaml
+
+                    echo "Required repository files are present."
+                '''
+            }
+        }
+
+        stage('Backend Test') {
+            steps {
+                dir("${BACKEND_APP_DIR}") {
+                    sh '''
+                        set -eu
+                        chmod +x gradlew
+                        ./gradlew --no-daemon test
+                    '''
+                }
+            }
+        }
+
+        stage('Backend BootJar') {
+            steps {
+                dir("${BACKEND_APP_DIR}") {
+                    sh '''
+                        set -eu
+                        chmod +x gradlew
+                        ./gradlew --no-daemon bootJar
+                    '''
+                }
+            }
+        }
+
+        stage('Prepare Release Metadata') {
+            steps {
+                script {
+                    def shortCommit = (env.GIT_COMMIT ?: 'local').take(7)
+                    def branchTag = env.RESOLVED_BRANCH ?: env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'
+                    env.IMAGE_TAG = "${branchTag}-${env.BUILD_NUMBER}-${shortCommit}"
+                    env.BACKEND_IMAGE = "${env.BACKEND_IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
+                    echo "Resolved backend image: ${env.BACKEND_IMAGE}"
+                }
+            }
+        }
+
+        stage('Build Container Image') {
+            when {
+                expression { env.ENABLE_IMAGE_BUILD == 'true' && env.ENABLE_IMAGE_PUSH != 'true' }
+            }
+            steps {
+                dir("${BACKEND_APP_DIR}") {
+                    sh '''
+                        set -eu
+                        chmod +x gradlew
+                        ./gradlew --no-daemon jibBuildTar -Djib.to.image="${BACKEND_IMAGE}"
+                    '''
+                }
+            }
+        }
+
+        stage('Push Container Image') {
+            when {
+                expression { env.ENABLE_IMAGE_BUILD == 'true' && env.ENABLE_IMAGE_PUSH == 'true' }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKER_REGISTRY_CREDENTIALS_ID}",
+                    usernameVariable: 'REGISTRY_USERNAME',
+                    passwordVariable: 'REGISTRY_PASSWORD'
+                )]) {
+                    sh '''
+                        set -eu
+                        cd "${BACKEND_APP_DIR}"
+                        chmod +x gradlew
+                        ./gradlew --no-daemon jib \
+                          -Djib.to.image="${BACKEND_IMAGE}" \
+                          -Djib.to.auth.username="${REGISTRY_USERNAME}" \
+                          -Djib.to.auth.password="${REGISTRY_PASSWORD}"
+                    '''
+                }
+            }
+        }
+
+        stage('Render Backend Manifests') {
+            steps {
+                sh '''
+                    set -eu
+                    chmod +x infra/k3s/cicd/scripts/render-backend-manifests.sh
+                    BACKEND_IMAGE="${BACKEND_IMAGE}" \
+                    BACKEND_INGRESS_HOST="${BACKEND_INGRESS_HOST}" \
+                    K8S_NAMESPACE="${K8S_NAMESPACE}" \
+                    infra/k3s/cicd/scripts/render-backend-manifests.sh build/deploy/backend
+                '''
+            }
+        }
+
+        stage('Archive Build Outputs') {
+            steps {
+                archiveArtifacts artifacts: 'backend/build/libs/*.jar,backend/build/jib-image.tar,build/deploy/backend/*.yaml', fingerprint: true
+            }
+        }
+
+        stage('Deploy To k3s') {
+            when {
+                expression { env.ENABLE_K8S_DEPLOY == 'true' }
+            }
+            steps {
+                sh '''
+                    set -eu
+
+                    if command -v kubectl >/dev/null 2>&1; then
+                      KUBECTL_BIN="$(command -v kubectl)"
+                    else
+                      KUBECTL_BIN="${WORKSPACE}/kubectl"
+                      curl -fsSL -o "${KUBECTL_BIN}" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+                      chmod +x "${KUBECTL_BIN}"
+                    fi
+
+                    set +x
+                    SERVICEACCOUNT_DIR="/var/run/secrets/kubernetes.io/serviceaccount"
+                    CLUSTER_CA="${SERVICEACCOUNT_DIR}/ca.crt"
+                    CLUSTER_TOKEN="$(cat "${SERVICEACCOUNT_DIR}/token")"
+                    KUBECONFIG_FILE="${WORKSPACE}/kubeconfig"
+
+                    cat > "${KUBECONFIG_FILE}" <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority: ${CLUSTER_CA}
+    server: ${K8S_API_SERVER}
+  name: in-cluster
+contexts:
+- context:
+    cluster: in-cluster
+    namespace: ${K8S_NAMESPACE}
+    user: jenkins-serviceaccount
+  name: in-cluster
+current-context: in-cluster
+users:
+- name: jenkins-serviceaccount
+  user:
+    token: ${CLUSTER_TOKEN}
+EOF
+                    set -x
+
+                    export PATH="$(dirname "${KUBECTL_BIN}"):${PATH}"
+                    export KUBECONFIG="${KUBECONFIG_FILE}"
+                    chmod +x infra/k3s/cicd/scripts/deploy-backend.sh
+                    infra/k3s/cicd/scripts/deploy-backend.sh build/deploy/backend
+                '''
+            }
+        }
+
+        stage('Pipeline Summary') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "Current branch is managed as the primary CI branch: ${PRIMARY_BRANCH}"
+                    echo "Resolved branch: ${RESOLVED_BRANCH:-unknown}"
+                    echo "Backend test and bootJar stages completed."
+                    echo "Resolved image tag: ${IMAGE_TAG}"
+                    echo "Rendered image reference: ${BACKEND_IMAGE}"
+                    echo "Image build enabled: ${ENABLE_IMAGE_BUILD}"
+                    echo "Image push enabled: ${ENABLE_IMAGE_PUSH}"
+                    echo "k3s deploy enabled: ${ENABLE_K8S_DEPLOY}"
+                    echo "Docker registry credential id: ${DOCKER_REGISTRY_CREDENTIALS_ID}"
+                    echo "Deployment assumes Jenkins serviceAccount RBAC in namespace ${K8S_NAMESPACE}"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Bootstrap pipeline completed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed. Check the stage logs above.'
+        }
+        always {
+            deleteDir()
+        }
+    }
+}

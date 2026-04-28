@@ -1,0 +1,64 @@
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build outputs
+**/build/
+**/out/
+**/.gradle/
+.gradle-backend/
+
+# Gradle wrapper runtime cache
+**/gradle-app.setting
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local application overrides
+**/application-local.properties
+**/application-local.yml
+**/application-local.yaml
+**/application-dev.properties
+**/application-dev.yml
+**/application-dev.yaml
+**/application-secrets.properties
+**/application-secrets.yml
+**/application-secrets.yaml
+
+# Kubernetes secrets and kubeconfig
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+infra/k3s/apps/**/secret.yaml
+infra/k3s/apps/**/secrets.yaml
+infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
+!infra/k3s/apps/**/secret.example.yaml
+!infra/k3s/apps/**/secrets.example.yaml
+
+# AWS credentials and local overrides
+.aws/
+aws-credentials
+aws-credentials.*
+aws-config
+aws-config.*
+**/credentials.properties
+**/credentials.yml
+**/credentials.yaml
+**/aws.properties
+**/aws.yml
+**/aws.yaml
+
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.jks
+*.crt
+*.csr
+
+# IDE / editor
+.vscode/
+*.iml
