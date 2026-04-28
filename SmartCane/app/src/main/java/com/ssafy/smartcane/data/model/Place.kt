@@ -1,8 +1,31 @@
 package com.ssafy.smartcane.data.model
 
-data class FavItem(val id: Int, val name: String, val addr: String)
+data class FavItem(
+    val id: Int,
+    val name: String,
+    val addr: String,
+    val longitude: Double? = null,
+    val latitude: Double? = null,
+    val estimatedMinutes: Int? = null
+)
 
-data class SearchResult(val id: Int, val name: String, val addr: String, val starred: Boolean)
+data class SearchResult(
+    val id: Int,
+    val name: String,
+    val addr: String,
+    val starred: Boolean,
+    val longitude: Double? = null,
+    val latitude: Double? = null,
+    val estimatedMinutes: Int? = null
+)
+
+data class RouteDestination(
+    val name: String,
+    val addr: String,
+    val longitude: Double? = null,
+    val latitude: Double? = null,
+    val estimatedMinutes: Int? = null
+)
 
 val defaultFavorites = listOf(
     FavItem(1, "집", "광주 광산구 풍영로 522-1"),

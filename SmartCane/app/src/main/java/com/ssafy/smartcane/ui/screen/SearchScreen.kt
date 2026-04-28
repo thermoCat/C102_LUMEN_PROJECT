@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.data.model.FavItem
+import com.ssafy.smartcane.data.model.RouteDestination
 import com.ssafy.smartcane.data.model.SearchResult
 import com.ssafy.smartcane.network.KakaoPlace
 import com.ssafy.smartcane.network.KakaoLocalSearchService
@@ -189,6 +190,7 @@ private fun SpeechRecognizerEffect(
 fun SearchScreen(
     favorites: List<FavItem>,
     onFavChange: (List<FavItem>) -> Unit,
+    onDestinationSelected: (RouteDestination) -> Unit,
     onTabChange: (NavTab) -> Unit
 ) {
     val context = LocalContext.current
@@ -228,7 +230,16 @@ fun SearchScreen(
         if (target.starred) {
             onFavChange(favorites.filter { it.id != id })
         } else {
-            onFavChange(favorites + FavItem(target.id, target.name, target.addr))
+            onFavChange(
+                favorites + FavItem(
+                    id = target.id,
+                    name = target.name,
+                    addr = target.addr,
+                    longitude = target.longitude,
+                    latitude = target.latitude,
+                estimatedMinutes = null
+                )
+            )
         }
     }
 
@@ -267,7 +278,7 @@ fun SearchScreen(
     LaunchedEffect(hasLocationPermission) {
         if (!hasLocationPermission) return@LaunchedEffect
 
-        val location = lastKnownLocation(context) ?: defaultGwangjuLocation()
+        val location = currentKoreaLocation(context)
         nearbyPlaces = kakaoLocalSearchService.searchNearbyAttractions(
             longitude = location.longitude,
             latitude = location.latitude
@@ -295,7 +306,10 @@ fun SearchScreen(
                 },
                 starred = favorites.any { fav ->
                     fav.name == place.placeName || fav.addr == place.roadAddressName || fav.addr == place.addressName
-                }
+                },
+                longitude = place.longitude,
+                latitude = place.latitude,
+                estimatedMinutes = null
             )
         }
     }
@@ -347,7 +361,14 @@ fun SearchScreen(
                 sub = SearchSub.Main
                 query = ""
             },
-            onSelect = { onTabChange(NavTab.Route) },
+            onSelect = { result ->
+                onDestinationSelected(result.toRouteDestination())
+                onTabChange(NavTab.Route)
+            },
+            onNearbySelect = { place ->
+                onDestinationSelected(place.toRouteDestination())
+                onTabChange(NavTab.Route)
+            },
             onToggleStar = ::toggleStar,
             onTabChange = {
                 sub = SearchSub.Main
@@ -376,6 +397,36 @@ private fun defaultGwangjuLocation(): Location =
         longitude = 126.8526
     }
 
+private fun currentKoreaLocation(context: Context): Location {
+    val location = lastKnownLocation(context)
+    return if (location != null && location.isInKorea()) {
+        location
+    } else {
+        defaultGwangjuLocation()
+    }
+}
+
+private fun Location.isInKorea(): Boolean =
+    latitude in 33.0..39.5 && longitude in 124.0..132.0
+
+private fun SearchResult.toRouteDestination(): RouteDestination =
+    RouteDestination(
+        name = name,
+        addr = addr,
+        longitude = longitude,
+        latitude = latitude,
+        estimatedMinutes = estimatedMinutes
+    )
+
+private fun KakaoPlace.toRouteDestination(): RouteDestination =
+    RouteDestination(
+        name = placeName,
+        addr = roadAddressName.ifBlank { addressName },
+        longitude = longitude,
+        latitude = latitude,
+        estimatedMinutes = null
+    )
+
 @Composable
 private fun SearchBrowseView(
     inResults: Boolean,
@@ -387,6 +438,7 @@ private fun SearchBrowseView(
     onQueryChange: (String) -> Unit,
     onCancel: () -> Unit,
     onSelect: (SearchResult) -> Unit,
+    onNearbySelect: (KakaoPlace) -> Unit,
     onToggleStar: (Int) -> Unit,
     onTabChange: (NavTab) -> Unit
 ) {
@@ -421,6 +473,7 @@ private fun SearchBrowseView(
             SearchMainScrollContent(
                 nearbyPlaces = nearbyPlaces,
                 onOpenSearch = onOpenSearch,
+                onPlaceClick = onNearbySelect,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 20.dp)
@@ -655,6 +708,7 @@ private fun SearchBrowseView(
 private fun SearchMainScrollContent(
     nearbyPlaces: List<KakaoPlace>,
     onOpenSearch: () -> Unit,
+    onPlaceClick: (KakaoPlace) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -750,7 +804,11 @@ private fun SearchMainScrollContent(
 
             visiblePlaces.forEachIndexed { index, place ->
                 item {
-                    NearbyRecommendationRow(place = place, isFirst = index == 0)
+                    NearbyRecommendationRow(
+                        place = place,
+                        isFirst = index == 0,
+                        onClick = { onPlaceClick(place) }
+                    )
                     if (index != visiblePlaces.lastIndex) {
                         HorizontalDivider(
                             color = NavDivider,
@@ -883,7 +941,11 @@ private fun NearbyRecommendationSection(
 
             visiblePlaces.forEachIndexed { index, place ->
                 item {
-                    NearbyRecommendationRow(place = place, isFirst = index == 0)
+                    NearbyRecommendationRow(
+                        place = place,
+                        isFirst = index == 0,
+                        onClick = { }
+                    )
                     if (index != visiblePlaces.lastIndex) {
                         HorizontalDivider(
                             color = NavDivider,
@@ -918,10 +980,19 @@ private fun NearbyRecommendationSection(
 }
 
 @Composable
-private fun NearbyRecommendationRow(place: KakaoPlace, isFirst: Boolean) {
+private fun NearbyRecommendationRow(
+    place: KakaoPlace,
+    isFirst: Boolean,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick
+            )
             .padding(horizontal = 10.dp)
             .padding(top = if (isFirst) 7.dp else 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically

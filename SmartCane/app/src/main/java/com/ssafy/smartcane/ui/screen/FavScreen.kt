@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ssafy.smartcane.data.model.FavItem
+import com.ssafy.smartcane.data.model.RouteDestination
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BackBtn
 import com.ssafy.smartcane.ui.component.BottomNav
@@ -51,6 +52,7 @@ private enum class FavSub { List, Detail, Rename }
 fun FavScreen(
     favorites: List<FavItem>,
     onFavChange: (List<FavItem>) -> Unit,
+    onDestinationSelected: (RouteDestination) -> Unit,
     onTabChange: (NavTab) -> Unit
 ) {
     var sub by remember { mutableStateOf(FavSub.List) }
@@ -77,7 +79,10 @@ fun FavScreen(
         FavSub.Detail -> selected?.let { item ->
             FavDetailView(
                 item = item,
-                onSetDest = { onTabChange(NavTab.Route) },
+                onSetDest = {
+                    onDestinationSelected(item.toRouteDestination())
+                    onTabChange(NavTab.Route)
+                },
                 onDelete = {
                     onFavChange(favorites.filter { it.id != item.id })
                     selected = null
@@ -113,6 +118,15 @@ fun FavScreen(
         }
     }
 }
+
+private fun FavItem.toRouteDestination(): RouteDestination =
+    RouteDestination(
+        name = name,
+        addr = addr,
+        longitude = longitude,
+        latitude = latitude,
+        estimatedMinutes = estimatedMinutes
+    )
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

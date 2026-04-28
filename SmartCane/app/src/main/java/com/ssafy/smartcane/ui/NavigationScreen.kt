@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.ssafy.smartcane.data.model.defaultFavorites
+import com.ssafy.smartcane.data.model.RouteDestination
 import com.ssafy.smartcane.ui.screen.FavScreen
 import com.ssafy.smartcane.ui.screen.RouteScreen
 import com.ssafy.smartcane.ui.screen.SafetyScreen
@@ -32,6 +33,7 @@ fun NavigationScreen(viewModel: NavigationViewModel) {
     var tab by remember { mutableStateOf(NavTab.Search) }
     var favorites by remember { mutableStateOf(defaultFavorites) }
     var safetyEnabled by remember { mutableStateOf(false) }
+    var destination by remember { mutableStateOf<RouteDestination?>(null) }
     val screenBackground = when {
         tab == NavTab.Safety && safetyEnabled -> Color(0xFF001B2B)
         tab == NavTab.Safety -> NavBarBg
@@ -64,9 +66,14 @@ fun NavigationScreen(viewModel: NavigationViewModel) {
                     NavTab.Search -> SearchScreen(
                         favorites = favorites,
                         onFavChange = { favorites = it },
+                        onDestinationSelected = { destination = it },
                         onTabChange = { tab = it }
                     )
-                    NavTab.Route -> RouteScreen(onTabChange = { tab = it })
+                    NavTab.Route -> RouteScreen(
+                        destination = destination,
+                        originName = "",
+                        onTabChange = { tab = it }
+                    )
                     NavTab.Safety -> SafetyScreen(
                         onTabChange = { tab = it },
                         onEnabledChange = { safetyEnabled = it }
@@ -74,6 +81,7 @@ fun NavigationScreen(viewModel: NavigationViewModel) {
                     NavTab.Fav -> FavScreen(
                         favorites = favorites,
                         onFavChange = { favorites = it },
+                        onDestinationSelected = { destination = it },
                         onTabChange = { tab = it }
                     )
                 }

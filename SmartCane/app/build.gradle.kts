@@ -18,6 +18,7 @@ fun localOrGradleProperty(name: String): String =
         ?: ""
 
 val kakaoRestApiKey = localOrGradleProperty("KAKAO_REST_API_KEY")
+val kakaoNativeAppKey = localOrGradleProperty("KAKAO_NATIVE_APP_KEY")
 
 android {
     namespace = "com.ssafy.smartcane"
@@ -34,6 +35,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoRestApiKey\"")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -72,6 +74,7 @@ dependencies {
     implementation(libs.okhttp)
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kakao.map)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
