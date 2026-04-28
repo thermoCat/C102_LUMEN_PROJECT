@@ -16,6 +16,11 @@
 - Prometheus: `http://k14c102.p.ssafy.io/prometheus`
 - Alertmanager: `http://k14c102.p.ssafy.io/alertmanager`
 
+경로 기반 접근 주의:
+
+- Grafana는 `grafana.ini.server.root_url` 과 `serve_from_sub_path` 를 함께 설정해야 정적 리소스와 로그인 리다이렉트가 정상 동작합니다.
+- Prometheus와 Alertmanager도 `externalUrl` 과 `routePrefix` 를 경로에 맞춰 두어야 UI 링크와 리다이렉트가 깨지지 않습니다.
+
 공용 파일과 운영 파일 분리:
 
 - Git에 올리는 공용 템플릿은 [kube-prometheus-stack-values.yaml](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\platform\monitoring\kube-prometheus-stack-values.yaml) 입니다.

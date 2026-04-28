@@ -1,5 +1,9 @@
 grafana:
   adminPassword: change-me-grafana-admin-password
+  grafana.ini:
+    server:
+      root_url: http://k14c102.p.ssafy.io/grafana
+      serve_from_sub_path: true
   ingress:
     enabled: true
     ingressClassName: traefik
@@ -17,6 +21,8 @@ prometheus:
     paths:
       - /prometheus
   prometheusSpec:
+    externalUrl: http://k14c102.p.ssafy.io/prometheus
+    routePrefix: /prometheus
     retention: 10d
     storageSpec:
       volumeClaimTemplate:
@@ -35,6 +41,9 @@ alertmanager:
       - k14c102.p.ssafy.io
     paths:
       - /alertmanager
+  alertmanagerSpec:
+    externalUrl: http://k14c102.p.ssafy.io/alertmanager
+    routePrefix: /alertmanager
 
 kubeStateMetrics:
   enabled: true
