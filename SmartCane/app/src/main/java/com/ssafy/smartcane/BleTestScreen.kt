@@ -1,7 +1,10 @@
 package com.ssafy.smartcane
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,7 +32,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,7 +48,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ssafy.smartcane.ble.BleNusManager
+import com.ssafy.smartcane.network.HazardApiService
 import com.ssafy.smartcane.ui.theme.AppWhite
+import kotlinx.coroutines.launch
 
 @Composable
 fun BleTestScreen(bleManager: BleNusManager) {
@@ -50,6 +58,8 @@ fun BleTestScreen(bleManager: BleNusManager) {
     val connState    by bleManager.connectionState.collectAsState()
     val connName     by bleManager.connectedName.collectAsState()
     val latestLog    by bleManager.log.collectAsState()
+    val scope        = rememberCoroutineScope()
+    var isReporting  by remember { mutableStateOf(false) }
 
     // 로그 히스토리 (최대 30줄)
     val logHistory = remember { mutableStateListOf<String>() }
@@ -278,6 +288,52 @@ fun BleTestScreen(bleManager: BleNusManager) {
 
             Spacer(Modifier.height(12.dp))
 
+            // ── 위험구간 신고 ────────────────────────────────
+            Text(
+                text = "위험구간 신고",
+                fontSize = 13.sp,
+                color = Color(0xFF90A4AE),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        isReporting = true
+                        val loc = getLastKnownLocation(context)
+                        if (loc == null) {
+                            logHistory.add("GPS 위치를 가져올 수 없습니다. 위치 권한을 확인하세요.")
+                        } else {
+                            logHistory.add("신고 중... lat=${loc.first}, lng=${loc.second}")
+                            val result = HazardApiService.reportHazard(
+                                lat = loc.first,
+                                lng = loc.second
+                            )
+                            logHistory.add(if (result.success) "[성공] ${result.message}" else "[실패] ${result.message}")
+                        }
+                        if (logHistory.size > 30) logHistory.removeAt(0)
+                        isReporting = false
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                enabled = !isReporting,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE65100),
+                    disabledContainerColor = Color(0xFFE65100).copy(alpha = 0.3f)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = if (isReporting) "신고 중..." else "현재 위치 위험구간 신고",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppWhite
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
             // 저장된 기기 삭제
             OutlinedButton(
                 onClick = { bleManager.clearSavedDeviceId() },
@@ -288,6 +344,16 @@ fun BleTestScreen(bleManager: BleNusManager) {
             }
         }
     }
+}
+
+@SuppressLint("MissingPermission")
+private fun getLastKnownLocation(context: Context): Pair<Double, Double>? {
+    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+    val providers = runCatching { lm.getProviders(true) }.getOrDefault(emptyList())
+    val location = providers
+        .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+        .maxByOrNull { it.accuracy }
+    return location?.let { Pair(it.latitude, it.longitude) }
 }
 
 @Composable
