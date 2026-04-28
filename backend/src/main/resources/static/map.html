@@ -149,7 +149,22 @@ const hazardLayer = new ol.layer.Vector({ source: hazardSource });
 
 const walkerSource = new ol.source.Vector();
 const walkerLayer = new ol.layer.Vector({ source: walkerSource });
-const walkers = {};  // deviceId → feature
+const walkers = {};      // deviceId → feature
+const walkerSeen = {};   // deviceId → lastSeen timestamp
+
+const WALKER_TIMEOUT_MS = 10000;
+
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(walkerSeen).forEach(deviceId => {
+    if (now - walkerSeen[deviceId] > WALKER_TIMEOUT_MS) {
+      walkerSource.removeFeature(walkers[deviceId]);
+      delete walkers[deviceId];
+      delete walkerSeen[deviceId];
+      document.getElementById('walker-count').textContent = Object.keys(walkers).length;
+    }
+  });
+}, 3000);
 
 function walkerStyle() {
   return new ol.style.Style({
@@ -174,8 +189,9 @@ function connectSse() {
       const f = new ol.Feature({ geometry: new ol.geom.Point(coord) });
       f.setStyle(walkerStyle());
       walkerSource.addFeature(f);
-      walkers[deviceId] = f;
+        walkers[deviceId] = f;
     }
+    walkerSeen[deviceId] = Date.now();
     document.getElementById('walker-count').textContent = Object.keys(walkers).length;
   });
 

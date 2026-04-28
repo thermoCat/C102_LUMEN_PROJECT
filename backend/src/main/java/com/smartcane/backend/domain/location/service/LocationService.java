@@ -10,9 +10,14 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class LocationService implements MessageListener {
@@ -21,9 +26,30 @@ public class LocationService implements MessageListener {
 
     private final StringRedisTemplate redisTemplate;
     private final CopyOnWriteArrayList<SseEmitter> emitters = new CopyOnWriteArrayList<>();
+    private final ScheduledExecutorService heartbeatScheduler = Executors.newSingleThreadScheduledExecutor();
 
     public LocationService(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
+    }
+
+    @PostConstruct
+    public void startHeartbeat() {
+        heartbeatScheduler.scheduleAtFixedRate(() -> {
+            List<SseEmitter> dead = new java.util.ArrayList<>();
+            for (SseEmitter emitter : emitters) {
+                try {
+                    emitter.send(SseEmitter.event().comment("heartbeat"));
+                } catch (IOException e) {
+                    dead.add(emitter);
+                }
+            }
+            emitters.removeAll(dead);
+        }, 15, 15, TimeUnit.SECONDS);
+    }
+
+    @PreDestroy
+    public void stopHeartbeat() {
+        heartbeatScheduler.shutdown();
     }
 
     public void publish(LocationUpdateRequest req) {
