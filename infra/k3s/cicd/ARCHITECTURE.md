@@ -1,699 +1,91 @@
-# Jenkins + k3s + GitLab 전체 구조 정리
+# Jenkins + GitLab + Tailscale k3s Architecture
 
-이 문서는 현재 SmartCane 프로젝트에서 실제로 구성한 `GitLab + Jenkins + k3s` 흐름을 한 번에 이해할 수 있도록 정리한 문서입니다.
+이 문서는 SmartCane의 현재 CI/CD 목표 구조를 설명합니다.
 
-현재 기준은 다음과 같습니다.
+현재 backend는 이미 새 Tailscale 기반 k3s 클러스터에서 정상 동작하고 있고, Jenkins는 아직 같은 클러스터 위에 다시 올리기 전 단계입니다.
 
-- Git 저장소: GitLab
-- CI 서버: Jenkins
-- 실행 환경: k3s 멀티노드 클러스터
-- 배포 구조: `단일 control-plane + 2 agent`
-- Jenkins 외부 접속: `k14c102.p.ssafy.io:8989`
-- Jenkins 자동 트리거: GitLab Webhook
-
----
-
-## 1. 한눈에 보는 전체 흐름
-
-```text
-개발자
-  |
-  | git push (develop)
-  v
-GitLab 저장소
-  |
-  | webhook
-  v
-Jenkins
-  |
-  | Jenkinsfile 실행
-  v
-CI 단계
-  - 저장소 checkout
-  - 파일 / 브랜치 / 기본 구조 확인
-  - 이후 테스트 / 빌드 / 이미지 생성 / 배포로 확장 가능
-  |
-  v
-k3s 클러스터
-  - A: control-plane + Jenkins
-  - B: agent
-  - C: agent
-```
-
----
-
-## 2. 현재 실제 인프라 구성
+## 현재 인프라 구조
 
 ### A 노드
 
-- 인스턴스: `t3a.xlarge`
-- 역할:
-  - `k3s server`
-  - `control-plane`
-  - `etcd`
-  - `Jenkins controller`
-- Public IP: `43.202.33.39`
-- Private IP: `172.26.4.199`
+- 노드명: `ip-172-26-4-199`
+- 역할: `k3s server`
+- Tailscale IP: `100.85.219.60`
+- 설명:
+  - control-plane
+  - `kubectl` 실행 기준 노드
+  - Traefik 진입점 중 하나
+  - backend pod가 올라갈 수 있는 app 노드
 
 ### B 노드
 
-- 인스턴스: `t3a.xlarge`
-- 역할:
-  - `k3s agent`
-  - ops 성격 워크로드 후보
-- Public IP: `54.116.86.121`
-- Private IP: `172.31.45.62`
+- 노드명: `ip-172-31-45-62`
+- 역할: `k3s agent`
+- Tailscale IP: `100.71.123.38`
+- 설명:
+  - backend 등 애플리케이션 워크로드 실행
+  - 실제 backend pod 기동 확인 완료
 
 ### C 노드
 
-- 인스턴스: `t3a.large`
-- 역할:
-  - `k3s agent`
-  - app-lite 성격 워크로드 후보
-- Public IP: `43.202.250.196`
-- Private IP: `172.31.36.235`
+- 노드명: `ip-172-31-36-235`
+- 역할: `k3s agent`
+- Tailscale IP: `100.85.80.94`
+- 설명:
+  - 추가 워크로드 실행 노드
 
----
+## 현재 구조를 한 줄로 정리하면
 
-## 3. 왜 HA control-plane이 아닌가
+- `단일 control-plane + 다중 worker`
+- `Tailscale 기반 멀티노드 분산 처리`
+- `완전한 HA 클러스터는 아님`
 
-처음에는 A, B, C를 모두 k3s server로 올려서 HA control-plane 구성을 검토했습니다.
+## 왜 이 구조를 선택했는가
 
-하지만 실제 확인 결과:
+이전에는 AWS private 네트워크 제약 때문에:
 
-- A는 `172.26.0.0/16` 대역
-- B/C는 `172.31.0.0/16` 대역
-- private IP 기준 직접 통신 불가
+- A와 B/C가 직접 private 통신하지 못했고
+- node 는 `Ready` 여도 worker pod endpoint 접근이 실패했으며
+- cert-manager, monitoring, worker ingress 경로가 불안정했다
 
-즉 embedded etcd 기반 HA control-plane을 위한 private peer 통신이 성립하지 않았습니다.
+이를 해결하기 위해 A/B/C 위에 Tailscale 가상망을 먼저 붙이고, 그 위에 k3s를 새로 재구성했다.
 
-그래서 최종 구조는 아래처럼 정리했습니다.
+그 결과:
 
-```text
-A = k3s server
-B = k3s agent
-C = k3s agent
-```
+- 노드 간 제어 경로와 데이터 경로를 Tailscale 인터페이스로 통일
+- `INTERNAL-IP` 가 모두 `100.x.x.x`
+- backend가 실제로 여러 노드에 분산 실행
 
-이 구조는:
-
-- 멀티노드 클러스터는 맞음
-- 워크로드 분산 가능
-- 완전한 control-plane HA는 아님
-
----
-
-## 4. Jenkins를 왜 k3s 위에 올렸는가
-
-예전에는 단일 인스턴스에서 Docker Compose로 Jenkins를 띄우는 방식도 쓸 수 있었습니다.
-
-예:
+## 현재 서비스 흐름
 
 ```text
-EC2 1대
- -> Docker
- -> docker-compose
- -> Jenkins
+Developer
+  -> git push develop
+  -> GitLab webhook
+  -> Jenkins pipeline
+  -> backend test / build / image push
+  -> rendered manifests
+  -> kubectl apply
+  -> k3s cluster
+  -> Traefik ingress
+  -> external traffic
 ```
 
-하지만 지금은 인프라 중심이 k3s 멀티노드 클러스터로 이동했기 때문에 Jenkins도 클러스터 안에서 운영하는 쪽으로 방향을 맞췄습니다.
+## 현재 검증 완료 상태
 
-즉 현재는:
+- 새 k3s 클러스터 재구성 완료
+- backend 수동 배포 완료
+- backend pod가 A와 B에 분산 배치되어 `Running`
+- `/api/actuator/health` 외부 응답 확인
 
-```text
-k3s cluster
- -> Jenkins Pod
- -> Jenkins PVC
- -> Jenkins Service
-```
+## 아직 남아 있는 작업
 
-구조로 동작합니다.
+- Jenkins를 새 클러스터에 재설치
+- monitoring 재설치
+- 필요 시 DNS/TLS 재정비
 
-### 장점
+## 주의할 점
 
-- 운영 도구도 클러스터 안에서 관리 가능
-- Jenkins를 k8s 리소스로 볼 수 있음
-- 나중에 앱 배포와 운영 흐름이 자연스럽게 연결됨
-- PVC, nodeSelector, service exposure 등을 활용 가능
-
-### 단점
-
-- Docker Compose보다 복잡함
-- Helm, PVC, Service, Port-forward, Webhook 등을 같이 이해해야 함
-- 초기 디버깅 난이도가 높음
-
----
-
-## 5. Jenkins 관련 파일 역할
-
-현재 `infra/k3s/cicd` 아래 파일 역할은 다음과 같습니다.
-
-### [jenkins-values.yaml](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\cicd\jenkins-values.yaml)
-
-Jenkins Helm 설치용 설정 파일입니다.
-
-이 파일에서 관리하는 것:
-
-- Jenkins가 어느 노드에 뜰지
-- PVC를 쓸지
-- StorageClass를 무엇으로 쓸지
-- sidecar / plugin 초기화 관련 옵션
-- 리소스 요청/제한
-
-### [Jenkinsfile](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\cicd\Jenkinsfile)
-
-GitLab에서 Jenkins가 읽어서 실제로 실행하는 파이프라인 파일입니다.
-
-즉:
-
-- Jenkins job의 `Script Path`
-- `infra/k3s/cicd/Jenkinsfile`
-
-로 연결되는 파일입니다.
-
-### [README.md](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\cicd\README.md)
-
-Jenkins 설치/운영 기준을 정리한 문서입니다.
-
-### [ARCHITECTURE.md](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\cicd\ARCHITECTURE.md)
-
-현재 문서입니다.
-
-GitLab, Jenkins, k3s 전체 관계와 구조를 설명합니다.
-
----
-
-## 6. Jenkins는 현재 어떻게 노출되어 있는가
-
-Jenkins는 내부적으로 `8080` 포트를 사용합니다.
-
-하지만 외부에서 접근하기 위해 현재는:
-
-```text
-k14c102.p.ssafy.io:8989 -> Jenkins 8080
-```
-
-형태로 연결해 두었습니다.
-
-이 연결은 A 서버에서 `kubectl port-forward`를 systemd 서비스로 상시 실행하는 방식입니다.
-
-즉 개념적으로는:
-
-```text
-외부 요청
- -> A 서버 8989
- -> systemd가 유지하는 kubectl port-forward
- -> svc/jenkins:8080
- -> Jenkins
-```
-
-입니다.
-
-### 왜 이렇게 했는가
-
-당장 가장 빠르게:
-
-- 외부 접속 가능
-- GitLab webhook 가능
-- 추가 콘솔 작업 최소화
-
-를 만족시키기 위해서입니다.
-
-### 이 방식의 의미
-
-- `SSH 터널`은 더 이상 필요 없음
-- 대신 A 서버의 `jenkins-port-forward.service`는 살아 있어야 함
-- 정식 Ingress/NodePort보다는 임시 운영형이지만, 현재 프로젝트 단계에서는 충분히 실용적임
-
----
-
-## 7. NodePort는 무엇인가
-
-NodePort는 Kubernetes Service를 외부에서 접근 가능하게 여는 방법 중 하나입니다.
-
-예:
-
-```text
-A서버IP:32080 -> Jenkins:8080
-```
-
-특징:
-
-- `kubectl port-forward` 없이 외부 공개 가능
-- webhook에 적합
-- 다만 보통 포트가 `30000~32767`
-- 현재처럼 `8989`를 유지하기는 불편할 수 있음
-
-즉 NodePort는 더 쿠버네티스다운 노출 방식이고,  
-현재 방식은 그보다 빠르게 붙인 현실적인 노출 방식이라고 보면 됩니다.
-
----
-
-## 7-1. Service / Ingress / Traefik / Nginx 차이
-
-이 부분은 쿠버네티스를 처음 볼 때 가장 헷갈리기 쉬운 지점입니다.
-
-핵심은 역할이 다르다는 것입니다.
-
-### 1. Service
-
-Service는 **클러스터 내부에서 Pod들을 하나의 서비스처럼 묶어주는 객체**입니다.
-
-예를 들어 backend Pod가 3개 있으면:
-
-```text
-backend-pod-1
-backend-pod-2
-backend-pod-3
-```
-
-이 Pod들 앞에 `backend-service`를 두면, 다른 Pod나 Ingress는 이 Service 이름만 보고 접근할 수 있습니다.
-
-Service가 하는 일:
-
-- 같은 역할의 Pod들을 한 그룹으로 묶음
-- Pod IP가 바뀌어도 고정된 서비스 이름 제공
-- 같은 서비스 안의 여러 Pod로 트래픽 분산
-
-즉 **기본적인 내부 로드밸런싱**은 Service가 합니다.
-
-### 2. NodePort
-
-NodePort는 Service를 **노드의 특정 포트로 외부 공개**하는 방식입니다.
-
-예:
-
-```text
-43.202.33.39:32080 -> backend-service:80
-```
-
-특징:
-
-- 외부에서 직접 접근 가능
-- 쿠버네티스 기능만으로 구성 가능
-- 보통 포트가 `30000~32767`
-
-즉 NodePort는 **Service를 바깥으로 꺼내는 방법 중 하나**입니다.
-
-### 3. Ingress
-
-Ingress는 **외부에서 들어온 HTTP/HTTPS 요청을 어떤 서비스로 보낼지 정하는 규칙**입니다.
-
-예:
-
-```text
-/api    -> backend-service
-/admin  -> admin-service
-```
-
-또는
-
-```text
-k14c102.p.ssafy.io  -> backend-service
-(admin route reserved for future use)
-```
-
-즉 Ingress는:
-
-- 도메인 기준 분기
-- path 기준 분기
-- 외부 HTTP 진입 규칙 정의
-
-를 담당합니다.
-
-다만 Ingress는 **규칙만 적는 객체**이고, 이 규칙을 실제로 처리해주는 프로그램이 따로 필요합니다.
-
-### 4. Ingress Controller
-
-Ingress 규칙을 실제로 읽고 동작하는 프로그램이 **Ingress Controller**입니다.
-
-즉:
-
-- Ingress = 규칙
-- Ingress Controller = 그 규칙을 실제로 수행하는 엔진
-
-### 5. Nginx
-
-Nginx는 원래 웹서버이자 리버스 프록시입니다.  
-쿠버네티스에서는 `Nginx Ingress Controller` 형태로 많이 씁니다.
-
-즉 Nginx는:
-
-- 외부 요청을 받아서
-- Ingress 규칙대로
-- 각 서비스로 전달하는 역할
-
-을 할 수 있습니다.
-
-하지만 중요한 점은:
-
-**Ingress Controller가 Nginx만 있는 것은 아닙니다.**
-
-### 6. Traefik
-
-Traefik도 Ingress Controller입니다.
-
-k3s는 기본적으로 Traefik이 함께 설치되는 경우가 많아서, 현재 구조에서는 굳이 별도 Nginx를 추가하지 않아도 Traefik으로 외부 HTTP 라우팅을 처리할 수 있습니다.
-
-즉 현재 SmartCane 구조에서는:
-
-- Nginx를 꼭 써야 하는 것은 아님
-- 이미 있는 Traefik을 활용하는 것이 더 자연스러움
-
-### 7. 한 줄씩 비교
-
-```text
-Pod
--> 실제 앱 컨테이너
-
-Service
--> Pod들을 하나의 서비스로 묶고 내부 로드밸런싱
-
-NodePort
--> Service를 노드 포트로 외부 공개
-
-Ingress
--> 외부 요청을 어떤 Service로 보낼지 규칙 정의
-
-Ingress Controller
--> Ingress 규칙을 실제로 처리하는 프로그램
-
-Nginx
--> 사용할 수 있는 Ingress Controller 중 하나
-
-Traefik
--> 사용할 수 있는 Ingress Controller 중 하나
-```
-
-### 8. SmartCane 기준으로 보면
-
-예를 들어 나중에 서비스가 이렇게 있다고 가정하면:
-
-```text
-backend-service
-admin-service
-jenkins-service
-```
-
-구조는 이렇게 됩니다.
-
-```text
-외부 사용자
-  |
-  v
-Ingress Controller (예: Traefik)
-  |
-  +--> /api    -> backend-service
-  +--> /admin  -> admin-service
-  +--> /jenkins -> jenkins-service
-  |
-  v
-각 Service가 내부 Pod들로 분산
-```
-
-즉:
-
-- 외부 라우팅은 Ingress Controller가 하고
-- 서비스 내부 분산은 Service가 합니다.
-
-그래서 “로드밸런싱”이라는 말을 쓸 때도 두 층이 있습니다.
-
-- 외부 진입 라우팅
-- 내부 Pod 분산
-
-### 9. 지금 우리 구조에서의 해석
-
-현재 Jenkins는 아직 Ingress/NodePort로 정식 공개한 게 아니라,
-
-```text
-systemd + kubectl port-forward
-```
-
-방식으로 `8989 -> Jenkins 8080`을 유지하고 있습니다.
-
-즉 현재 Jenkins 공개는:
-
-- Ingress 기반 정식 공개는 아님
-- 임시지만 상시 유지 가능한 공개 방식
-
-입니다.
-
-반면 backend/admin 서비스를 실제로 외부 제공하게 되면, 그때는 Traefik Ingress 쪽으로 가는 것이 더 자연스럽습니다.
-
----
-
-## 8. bootstrap pipeline이란 무엇인가
-
-현재 Jenkinsfile은 아직 실제 앱 빌드/배포용 파이프라인이 아닙니다.
-
-현재 성격은 `bootstrap pipeline`입니다.
-
-이 말은:
-
-- Jenkins와 GitLab이 잘 연결되었는지
-- `develop` 브랜치를 읽는지
-- Jenkinsfile을 정상 인식하는지
-- 저장소 구조가 기본 기준을 만족하는지
-
-를 먼저 검증하는 **기초 연결 테스트 파이프라인**이라는 뜻입니다.
-
-현재 Jenkinsfile이 하는 일:
-
-- checkout
-- branch / workspace 확인
-- 필수 파일 존재 확인
-- 이후 확장 안내 출력
-
-현재 Jenkinsfile이 아직 안 하는 일:
-
-- 테스트
-- 빌드
-- Docker 이미지 생성
-- 이미지 push
-- k3s 배포
-
-즉 현재는:
-
-```text
-자동 CI 연결 성공 여부 확인 단계
-```
-
-라고 보면 됩니다.
-
----
-
-## 9. GitLab과 Jenkins는 어떻게 연결되었는가
-
-현재 연결 방식은 다음과 같습니다.
-
-### 1. GitLab 저장소
-
-- 저장소: `https://lab.ssafy.com/s14-final/S14P31C102.git`
-- 기본 작업 브랜치: `develop`
-
-### 2. Jenkins Credential
-
-Jenkins에는 GitLab 접속용 credential을 등록했습니다.
-
-형태:
-
-- `Username with password`
-- username = GitLab 아이디
-- password = GitLab Personal Access Token
-
-권한:
-
-- `read_repository`
-
-### 3. Jenkins Pipeline Job
-
-현재 Jenkins Job은 `Pipeline` 타입입니다.
-
-주요 설정:
-
-- SCM: `Git`
-- Branch: `*/develop`
-- Script Path: `infra/k3s/cicd/Jenkinsfile`
-
-### 4. GitLab Webhook
-
-GitLab에서 push 이벤트가 발생하면 Jenkins가 자동으로 반응하도록 webhook을 연결했습니다.
-
-즉:
-
-```text
-git push origin develop
- -> GitLab
- -> webhook
- -> Jenkins
- -> Pipeline 실행
-```
-
-구조입니다.
-
----
-
-## 10. 지금 무엇이 자동화되었는가
-
-### 이미 자동화된 것
-
-- GitLab push 시 Jenkins pipeline 자동 실행
-
-즉 `자동 CI 트리거`는 완료됐습니다.
-
-### 아직 자동화되지 않은 것
-
-- backend 테스트
-- 실제 build
-- Docker image 생성
-- Registry push
-- k3s rollout / deploy
-
-즉 현재 상태를 정확히 말하면:
-
-```text
-자동 CI 트리거 완료
-실제 CD는 아직 미구현
-```
-
-입니다.
-
----
-
-## 11. CI와 CD의 차이
-
-### CI
-
-Continuous Integration
-
-의미:
-
-- 코드를 push하면 자동으로 검증
-- 테스트
-- 기본 빌드
-- 파이프라인 연결 확인
-
-현재 우리가 완료한 범위:
-
-- GitLab push
-- Jenkins 자동 실행
-- bootstrap pipeline 실행
-
-### CD
-
-Continuous Delivery / Deployment
-
-의미:
-
-- 빌드 결과물을 실제 실행 환경에 배포
-- Docker image push
-- kubectl apply / rollout
-
-현재는 아직 여기까지는 안 갔습니다.
-
----
-
-## 12. 현재 Jenkins 동작 흐름
-
-현재 `develop` 브랜치에 push가 들어오면 다음 순서로 동작합니다.
-
-```text
-1. 개발자가 develop 브랜치에 push
-2. GitLab webhook 발생
-3. Jenkins가 webhook 수신
-4. Jenkins job 실행
-5. GitLab 저장소 checkout
-6. infra/k3s/cicd/Jenkinsfile 실행
-7. bootstrap 검증 수행
-8. 성공/실패 로그 기록
-```
-
----
-
-## 13. 지금 확인할 수 있는 성공 기준
-
-다음이 모두 되면 현재 구조는 정상입니다.
-
-### Jenkins 접속
-
-```text
-http://k14c102.p.ssafy.io:8989
-```
-
-### k3s 상태
-
-```bash
-sudo kubectl get nodes -o wide
-sudo kubectl get pods -n cicd
-```
-
-### Jenkins Pod
-
-```text
-jenkins-0   1/1 Running
-```
-
-### Jenkins PVC
-
-```text
-jenkins   Bound
-```
-
-### GitLab Webhook
-
-GitLab webhook 테스트 응답:
-
-```text
-HTTP 200
-```
-
-### Jenkins Build
-
-push 후 새 Build가 자동으로 생성됨
-
----
-
-## 14. 지금 남은 다음 단계
-
-이제부터는 bootstrap pipeline을 실제 앱 파이프라인으로 확장해야 합니다.
-
-추천 순서:
-
-1. 첫 CI/CD 대상 서비스 결정
-   - 추천: `backend`
-2. backend 코드 위치 확인
-3. backend 빌드 명령 확정
-4. Dockerfile 정리
-5. 이미지 저장소 결정
-6. k3s 배포 manifest 또는 Helm chart 정리
-7. Jenkinsfile에 아래 단계 추가
-   - test
-   - build
-   - image push
-   - deploy
-
----
-
-## 15. 현재 구조의 장점
-
-- GitLab, Jenkins, k3s가 한 흐름으로 연결됨
-- 운영 도구도 k3s 안에서 관리 가능
-- webhook 기반 자동 CI 시작점 확보
-- 나중에 실제 앱 배포로 확장하기 쉬움
-
----
-
-## 16. 현재 구조의 한계
-
-- control-plane HA는 아님
-- Jenkins 외부 공개 방식이 정식 Ingress/NodePort는 아님
-- 현재 Jenkinsfile은 bootstrap 수준
-- 실제 CD는 아직 추가 구현 필요
-
----
-
-## 17. 한 줄 정리
-
-현재 SmartCane 프로젝트의 Jenkins + k3s + GitLab 구조는  
-**GitLab push → Jenkins 자동 실행 → k3s 기반 운영 환경에서 파이프라인 수행**까지 연결된 상태이며,  
-지금은 bootstrap CI가 성공한 단계이고 다음 작업은 이를 실제 backend 빌드·배포 파이프라인으로 확장하는 것입니다.
+- Jenkinsfile의 `K8S_API_SERVER` 는 새 구조에 맞게 Tailscale 주소로 갱신해야 한다
+- backend 매니페스트의 기본 이미지는 placeholder 이므로 CI 렌더링이 필요하다
+- 이 구조는 멀티노드 분산 처리에는 적합하지만, control-plane HA를 의미하지는 않는다

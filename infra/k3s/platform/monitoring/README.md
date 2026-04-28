@@ -1,40 +1,37 @@
-# 모니터링
+# Monitoring
 
-이 디렉터리는 `kube-prometheus-stack` 기준의 모니터링 설치 파일을 제공합니다.
+이 디렉터리는 `kube-prometheus-stack` 기반 monitoring 구성을 담고 있습니다.
 
-구성 요소:
+## 현재 상태
 
-- Prometheus
-- Grafana
-- Alertmanager
-- kube-state-metrics
-- node-exporter
+- 예전 클러스터에서는 Grafana, Prometheus, Alertmanager 구성을 사용했음
+- 새 Tailscale 기반 클러스터로 재구성한 뒤에는 아직 monitoring 을 다시 설치하지 않음
+- 따라서 현재 이 디렉터리는 `재설치용 기준 설정` 으로 봐야 한다
 
-현재 라우팅 경로:
+## 포함 파일
+
+- `kube-prometheus-stack-values.yaml`
+  - 공용 기본값
+- `kube-prometheus-stack-values.prod.example.yaml`
+  - 운영용 값 예시
+- `README.md`
+
+## 재설치 시 목표 경로
 
 - Grafana: `http://k14c102.p.ssafy.io/grafana`
 - Prometheus: `http://k14c102.p.ssafy.io/prometheus`
 - Alertmanager: `http://k14c102.p.ssafy.io/alertmanager`
 
-경로 기반 접근 주의:
-
-- Grafana는 `grafana.ini.server.root_url` 과 `serve_from_sub_path` 를 함께 설정해야 정적 리소스와 로그인 리다이렉트가 정상 동작합니다.
-- Prometheus와 Alertmanager도 `externalUrl` 과 `routePrefix` 를 경로에 맞춰 두어야 UI 링크와 리다이렉트가 깨지지 않습니다.
-
-공용 파일과 운영 파일 분리:
-
-- Git에 올리는 공용 템플릿은 [kube-prometheus-stack-values.yaml](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\platform\monitoring\kube-prometheus-stack-values.yaml) 입니다.
-- 실제 Grafana 관리자 비밀번호는 Git에 올리지 말고, [kube-prometheus-stack-values.prod.example.yaml](C:\Users\SSAFY\IdeaProjects\S14P31C102\infra\k3s\platform\monitoring\kube-prometheus-stack-values.prod.example.yaml)을 복사해서 `kube-prometheus-stack-values.prod.yaml` 로 만든 뒤 그 파일에만 넣습니다.
-- `kube-prometheus-stack-values.prod.yaml` 은 `.gitignore` 에 등록되어 있어 커밋되지 않습니다.
-
-운영 파일 생성 예시:
+## 운영 파일 생성
 
 ```bash
 cp infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.example.yaml \
   infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
 ```
 
-설치 순서:
+`kube-prometheus-stack-values.prod.yaml` 은 Git에 커밋하지 않는다.
+
+## 설치 순서
 
 ```bash
 kubectl create namespace monitoring
@@ -45,16 +42,21 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   -f infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
 ```
 
-설치 후 확인:
+## 설치 후 확인
 
 ```bash
 kubectl get pods -n monitoring
 kubectl get ingress -n monitoring
 ```
 
-추가로 보면 좋은 항목:
+## 새 클러스터에서 확인하고 싶은 항목
 
 - backend pod 상태
-- 노드 CPU/메모리 사용량
-- ingress 5xx
-- Jenkins 상태
+- 노드 CPU / 메모리 사용량
+- ingress 5xx 비율
+- worker 노드에 분산된 backend pod 상태
+
+## 메모
+
+- 예전에는 worker endpoint 접근 문제 때문에 monitoring ingress가 불안정했다
+- 새 클러스터는 Tailscale 기반 data plane 이므로, monitoring 도 이전보다 안정적으로 구성될 가능성이 높다
