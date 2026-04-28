@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -49,7 +50,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ssafy.smartcane.ble.BleNusManager
 import com.ssafy.smartcane.network.HazardApiService
+import com.ssafy.smartcane.network.LocationApiService
 import com.ssafy.smartcane.ui.theme.AppWhite
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -58,12 +62,22 @@ fun BleTestScreen(bleManager: BleNusManager) {
     val connState    by bleManager.connectionState.collectAsState()
     val connName     by bleManager.connectedName.collectAsState()
     val latestLog    by bleManager.log.collectAsState()
-    val scope        = rememberCoroutineScope()
-    var isReporting  by remember { mutableStateOf(false) }
+    val scope          = rememberCoroutineScope()
+    var isReporting    by remember { mutableStateOf(false) }
+    var isTracking     by remember { mutableStateOf(false) }
+    var trackingJob    by remember { mutableStateOf<Job?>(null) }
+    val deviceId       = remember { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
 
     // 로그 히스토리 (최대 30줄)
     val logHistory = remember { mutableStateListOf<String>() }
     val scrollState = rememberScrollState()
+
+    // 화면 벗어날 때 추적 자동 중지
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            trackingJob?.cancel()
+        }
+    }
 
     // latestLog 변화 감지 → 히스토리에 추가
     androidx.compose.runtime.LaunchedEffect(latestLog) {
@@ -284,6 +298,53 @@ fun BleTestScreen(bleManager: BleNusManager) {
                         )
                     }
                 }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // ── 실시간 위치 추적 ──────────────────────────────
+            Text(
+                text = "실시간 위치 추적",
+                fontSize = 13.sp,
+                color = Color(0xFF90A4AE),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    if (isTracking) {
+                        trackingJob?.cancel()
+                        trackingJob = null
+                        isTracking = false
+                        logHistory.add("위치 추적 중지")
+                    } else {
+                        isTracking = true
+                        logHistory.add("위치 추적 시작 (3초 간격)")
+                        trackingJob = scope.launch {
+                            while (true) {
+                                val loc = getLastKnownLocation(context)
+                                if (loc != null) {
+                                    LocationApiService.sendLocation(deviceId, loc.first, loc.second)
+                                }
+                                delay(3000)
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isTracking) Color(0xFF1565C0) else Color(0xFF0D47A1),
+                    disabledContainerColor = Color(0xFF0D47A1).copy(alpha = 0.3f)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = if (isTracking) "위치 추적 중... (탭하여 중지)" else "위치 추적 시작",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppWhite
+                )
             }
 
             Spacer(Modifier.height(12.dp))
