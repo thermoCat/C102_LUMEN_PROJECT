@@ -15,7 +15,7 @@ pipeline {
         BACKEND_IMAGE_REPOSITORY = 'kjw3568/smartcane-backend'
         DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-registry-smartcane'
         KUBECTL_VERSION = 'v1.34.1'
-        K8S_API_SERVER = 'https://172.26.4.199:6443'
+        K8S_API_SERVER = 'https://100.85.219.60:6443'
         ENABLE_IMAGE_BUILD = 'true'
         ENABLE_IMAGE_PUSH = 'true'
         ENABLE_K8S_DEPLOY = 'true'

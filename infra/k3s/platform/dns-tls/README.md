@@ -1,30 +1,36 @@
-# DNS 및 TLS
+# DNS / TLS
 
-이 디렉터리는 SmartCane 서비스의 호스트 연결과 HTTPS 발급을 위한 템플릿을 담고 있습니다.
+이 디렉터리는 cert-manager, external-dns, TLS 관련 템플릿을 담고 있습니다.
 
-적용 순서:
+## 현재 상태
 
-1. cert-manager 설치
-2. cert-manager 설치 후 TLS 발급 확인
-3. 외부 DNS를 직접 관리하는 구조가 아니라면 `external-dns`는 생략
-4. ClusterIssuer 적용
-5. 현재는 `k14c102.p.ssafy.io` 를 ingress 주소로 연결
+- 예전 클러스터에서 HTTPS / cert-manager 구성을 검토했음
+- 당시 worker endpoint 통신 불안정 때문에 운영 경로에서 보류했음
+- 새 Tailscale 기반 클러스터에서는 아직 DNS/TLS 를 다시 적용하지 않음
 
-예시 적용:
+즉 이 디렉터리는 현재 `활성 운영 구성` 이 아니라, 이후 재적용을 위한 템플릿이다.
 
-```bash
-kubectl apply -f infra/k3s/platform/dns-tls/cluster-issuer-letsencrypt-prod.yaml
-```
+## 포함 파일
 
-현재 backend ingress는 이미 아래 설정을 포함합니다.
+- `cluster-issuer-letsencrypt-prod.yaml`
+- `external-dns-values.yaml`
 
-- `cert-manager.io/cluster-issuer: letsencrypt-prod`
-- `secretName: backend-api-tls`
+## 다시 적용할 때 확인할 것
 
-즉 cert-manager와 DNS만 준비되면, 추가 코드 변경 없이 HTTPS 발급까지 이어질 수 있습니다.
+- 도메인 `k14c102.p.ssafy.io` 의 DNS 제어 권한
+- Traefik ingress 동작 확인
+- cert-manager webhook / solver 동작 확인
+- Tailscale 기반 클러스터에서 worker endpoint 접근 정상 여부
 
-참고:
+## 권장 적용 순서
 
-- 현재 팀이 실제로 사용하는 호스트는 `k14c102.p.ssafy.io` 입니다.
-- 별도 구매 도메인이 없으므로 `external-dns`는 기본 전제에서 제외해도 됩니다.
-- DNS를 우리가 직접 관리할 수 없는 경우에는 호스트 값만 ingress와 인증서 기준으로 맞추면 됩니다.
+1. backend / monitoring / Jenkins 기본 동작 확인
+2. ingress 경로 안정화
+3. cert-manager 재설치
+4. external-dns 적용
+5. HTTPS 강제 전환
+
+## 메모
+
+- 지금은 HTTP 기준 서비스 복구와 멀티노드 분산 처리 검증이 우선이다
+- TLS는 현재 구조가 안정화된 뒤 다음 단계로 진행한다
