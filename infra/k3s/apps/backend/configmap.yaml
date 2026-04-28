@@ -5,14 +5,15 @@ metadata:
   namespace: smartcane
 data:
   SPRING_PROFILES_ACTIVE: prod
-  POSTGRES_HOST: rds-postgres-stg.ssafyapp.com
-  POSTGRES_PORT: "5432"
+  # Node A relays managed-service traffic for worker nodes over Tailscale.
+  POSTGRES_HOST: 100.85.219.60
+  POSTGRES_PORT: "15432"
   POSTGRES_DB: "lumen102"
-  MYSQL_HOST: rds-stg.ssafyapp.com
-  MYSQL_PORT: "3306"
+  MYSQL_HOST: 100.85.219.60
+  MYSQL_PORT: "13306"
   MYSQL_DB: "lumen102"
-  REDIS_HOST: redis-stg.ssafyapp.com
-  REDIS_PORT: "6379"
+  REDIS_HOST: 100.85.219.60
+  REDIS_PORT: "16379"
   AWS_REGION: ap-northeast-2
   S3_BUCKET: ssafyapp-stg-project-prv-data
   S3_PREFIX: 7rart8
