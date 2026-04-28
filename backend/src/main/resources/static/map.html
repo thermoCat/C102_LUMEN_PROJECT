@@ -77,6 +77,8 @@
     .legend h4 { margin-bottom: 8px; color: #aaa; }
     .legend-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
     .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; flex-shrink: 0; }
+    #sse-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #333; color: #aaa; }
+    #sse-status.connected { background: rgba(76,175,80,0.2); color: #4CAF50; }
   </style>
 </head>
 <body>
@@ -99,7 +101,8 @@
   <button onclick="loadHazards()">새로고침</button>
   <button id="btn-sidewalk" class="toggle-btn" onclick="toggleLayer('sidewalk')">인도 ON</button>
   <button id="btn-crosswalk" class="toggle-btn" onclick="toggleLayer('crosswalk')">횡단보도 ON</button>
-  <div id="status">위험구간: <span id="count">0</span>개</div>
+  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명</div>
+  <span id="sse-status">SSE 연결 중...</span>
 </div>
 
 <div id="map"></div>
@@ -118,6 +121,7 @@
   <div class="legend-item"><div class="legend-dot" style="background:#ff9800"></div> 계단</div>
   <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div> 경사로</div>
   <div class="legend-item"><div class="legend-dot" style="background:#e91e63"></div> 파손 보도</div>
+  <div class="legend-item" style="margin-top:8px"><div class="legend-dot" style="background:#29B6F6"></div> 보행자 (실시간)</div>
 </div>
 
 <script>
@@ -142,6 +146,50 @@ const osmLayer = new ol.layer.Tile({
 
 const hazardSource = new ol.source.Vector();
 const hazardLayer = new ol.layer.Vector({ source: hazardSource });
+
+const walkerSource = new ol.source.Vector();
+const walkerLayer = new ol.layer.Vector({ source: walkerSource });
+const walkers = {};  // deviceId → feature
+
+function walkerStyle() {
+  return new ol.style.Style({
+    image: new ol.style.Circle({
+      radius: 8,
+      fill: new ol.style.Fill({ color: '#29B6F6' }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 2 })
+    })
+  });
+}
+
+function connectSse() {
+  const es = new EventSource('/api/location/stream');
+  const statusEl = document.getElementById('sse-status');
+
+  es.addEventListener('location', e => {
+    const { deviceId, lat, lng } = JSON.parse(e.data);
+    const coord = ol.proj.fromLonLat([lng, lat]);
+    if (walkers[deviceId]) {
+      walkers[deviceId].getGeometry().setCoordinates(coord);
+    } else {
+      const f = new ol.Feature({ geometry: new ol.geom.Point(coord) });
+      f.setStyle(walkerStyle());
+      walkerSource.addFeature(f);
+      walkers[deviceId] = f;
+    }
+    document.getElementById('walker-count').textContent = Object.keys(walkers).length;
+  });
+
+  es.onopen = () => {
+    statusEl.textContent = 'SSE 연결됨';
+    statusEl.className = 'connected';
+  };
+  es.onerror = () => {
+    statusEl.textContent = 'SSE 재연결 중...';
+    statusEl.className = '';
+    es.close();
+    setTimeout(connectSse, 3000);
+  };
+}
 
 let map, sidewalkLayer, crosswalkLayer;
 
@@ -239,7 +287,7 @@ function loadHazardsDebounced() {
 
     map = new ol.Map({
       target: 'map',
-      layers: [osmLayer, sidewalkLayer, crosswalkLayer, hazardLayer],
+      layers: [osmLayer, sidewalkLayer, crosswalkLayer, hazardLayer, walkerLayer],
       view: new ol.View({
         center: ol.proj.fromLonLat([126.8099, 35.2024]),
         zoom: 16
@@ -287,6 +335,7 @@ function loadHazardsDebounced() {
     }
 
     setInterval(loadHazards, 10000);
+    connectSse();
 }());
 </script>
 </body>

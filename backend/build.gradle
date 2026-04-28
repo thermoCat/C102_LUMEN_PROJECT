@@ -9,8 +9,8 @@ group = 'com.smartcane'
 version = '0.0.1-SNAPSHOT'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
 repositories {
@@ -44,7 +44,7 @@ tasks.named('test') {
 
 jib {
     from {
-        image = 'eclipse-temurin:17-jre'
+        image = 'eclipse-temurin:21-jre'
     }
     container {
         ports = ['8080']
