@@ -325,8 +325,13 @@ fun BleTestScreen(bleManager: BleNusManager) {
                             while (true) {
                                 val loc = getLastKnownLocation(context)
                                 if (loc != null) {
-                                    LocationApiService.sendLocation(deviceId, loc.first, loc.second)
+                                    val result = LocationApiService.sendLocation(deviceId, loc.first, loc.second)
+                                    val ok = result.isSuccess
+                                    logHistory.add(if (ok) "위치 전송 lat=${loc.first}, lng=${loc.second}" else "전송 실패: ${result.exceptionOrNull()?.message}")
+                                } else {
+                                    logHistory.add("GPS null - 위치 없음")
                                 }
+                                if (logHistory.size > 30) logHistory.removeAt(0)
                                 delay(3000)
                             }
                         }
