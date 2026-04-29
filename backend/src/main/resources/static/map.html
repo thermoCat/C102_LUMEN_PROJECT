@@ -315,6 +315,7 @@ function loadHazardsDebounced() {
       const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
       if (feature) {
         const p = feature.get('props');
+        if (!p) { popup.style.display = 'none'; return; }
         document.getElementById('popup-type').textContent = TYPE_KO[p.type] || p.type;
         document.getElementById('popup-confidence').textContent = p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '-';
         document.getElementById('popup-desc').textContent = p.description || '-';
