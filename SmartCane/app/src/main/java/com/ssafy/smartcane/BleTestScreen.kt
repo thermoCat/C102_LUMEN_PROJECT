@@ -4,8 +4,11 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
+import android.os.Looper
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,16 +69,25 @@ fun BleTestScreen(bleManager: BleNusManager) {
     var isReporting    by remember { mutableStateOf(false) }
     var isTracking     by remember { mutableStateOf(false) }
     var trackingJob    by remember { mutableStateOf<Job?>(null) }
+    var locationListener by remember { mutableStateOf<LocationListener?>(null) }
+    var lastLocation   by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     val deviceId       = remember { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
 
     // 로그 히스토리 (최대 30줄)
     val logHistory = remember { mutableStateListOf<String>() }
     val scrollState = rememberScrollState()
 
-    // 화면 벗어날 때 추적 자동 중지
+    // 화면 벗어날 때 추적 자동 중지 + GPS listener 해제
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose {
             trackingJob?.cancel()
+            locationListener?.let {
+                runCatching {
+                    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                    lm?.removeUpdates(it)
+                }
+            }
+            locationListener = null
         }
     }
 
@@ -314,26 +326,90 @@ fun BleTestScreen(bleManager: BleNusManager) {
             Button(
                 onClick = {
                     if (isTracking) {
+                        // ── 추적 중지 ──
                         trackingJob?.cancel()
                         trackingJob = null
                         isTracking = false
+                        // GPS listener 해제
+                        locationListener?.let { listener ->
+                            runCatching {
+                                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                                lm?.removeUpdates(listener)
+                            }
+                        }
+                        locationListener = null
+                        lastLocation = null
                         logHistory.add("위치 추적 중지")
                         scope.launch {
                             val result = LocationApiService.sendStop(deviceId)
                             logHistory.add(if (result.isSuccess) "중지 전송 완료 (deviceId=$deviceId)" else "중지 전송 실패: ${result.exceptionOrNull()?.message}")
                         }
                     } else {
+                        // ── 추적 시작 ──
+                        // 권한 체크
+                        val fineGranted = ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                        val coarseGranted = ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (!fineGranted && !coarseGranted) {
+                            logHistory.add("위치 권한 필요 - 설정에서 허용 후 다시 시도")
+                            return@Button
+                        }
+
                         isTracking = true
-                        logHistory.add("위치 추적 시작 (3초 간격)")
+                        logHistory.add("위치 추적 시작 (실시간 GPS, 3초 간격)")
+
+                        // GPS 실시간 listener 등록
+                        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                        if (lm == null) {
+                            logHistory.add("LocationManager 사용 불가")
+                            isTracking = false
+                            return@Button
+                        }
+
+                        val listener = object : LocationListener {
+                            override fun onLocationChanged(location: Location) {
+                                lastLocation = Pair(location.latitude, location.longitude)
+                            }
+                            // 하위 API 호환
+                            override fun onProviderEnabled(provider: String) {}
+                            override fun onProviderDisabled(provider: String) {}
+                            @Suppress("DEPRECATION")
+                            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                        }
+                        locationListener = listener
+
+                        // 사용 가능한 모든 provider에 등록 (GPS, NETWORK)
+                        val providers = runCatching { lm.getProviders(true) }.getOrDefault(emptyList())
+                        if (providers.isEmpty()) {
+                            logHistory.add("활성화된 위치 provider 없음 - 위치 서비스 ON 확인")
+                            isTracking = false
+                            locationListener = null
+                            return@Button
+                        }
+                        runCatching {
+                            providers.forEach { provider ->
+                                @SuppressLint("MissingPermission")
+                                lm.requestLocationUpdates(provider, 1000L, 1f, listener, Looper.getMainLooper())
+                            }
+                        }.onFailure {
+                            logHistory.add("GPS listener 등록 실패: ${it.message}")
+                        }
+
+                        // 초기 fallback: 즉시 캐시된 위치라도 채워둠
+                        lastLocation = getLastKnownLocation(context)
+
                         trackingJob = scope.launch {
                             while (true) {
-                                val loc = getLastKnownLocation(context)
+                                val loc = lastLocation
                                 if (loc != null) {
                                     val result = LocationApiService.sendLocation(deviceId, loc.first, loc.second)
                                     val ok = result.isSuccess
                                     logHistory.add(if (ok) "위치 전송 lat=${loc.first}, lng=${loc.second}" else "전송 실패: ${result.exceptionOrNull()?.message}")
                                 } else {
-                                    logHistory.add("GPS null - 위치 없음")
+                                    logHistory.add("GPS null - 위치 수신 대기 중")
                                 }
                                 if (logHistory.size > 30) logHistory.removeAt(0)
                                 delay(3000)
@@ -420,9 +496,10 @@ fun BleTestScreen(bleManager: BleNusManager) {
 private fun getLastKnownLocation(context: Context): Pair<Double, Double>? {
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
     val providers = runCatching { lm.getProviders(true) }.getOrDefault(emptyList())
+    // accuracy는 미터 단위 (작을수록 정확) → minByOrNull
     val location = providers
         .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
-        .maxByOrNull { it.accuracy }
+        .minByOrNull { it.accuracy }
     return location?.let { Pair(it.latitude, it.longitude) }
 }
 
