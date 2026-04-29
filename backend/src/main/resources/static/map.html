@@ -190,8 +190,15 @@ function walkerStyle() {
   });
 }
 
+let currentEs = null;
+
 function connectSse() {
+  if (currentEs) {
+    currentEs.close();
+    currentEs = null;
+  }
   const es = new EventSource('/api/location/stream');
+  currentEs = es;
   const statusEl = document.getElementById('sse-status');
 
   es.addEventListener('location-stop', e => {
