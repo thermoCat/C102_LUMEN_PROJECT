@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 object HazardApiService {
 
-    private const val BASE_URL = "http://k14c102.p.ssafy.io"
+    private const val BASE_URL = "https://k14c102.p.ssafy.io"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
