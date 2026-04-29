@@ -15,6 +15,7 @@ cp "${SOURCE_DIR}/configmap.yaml" "${OUTPUT_DIR}/configmap.yaml"
 cp "${SOURCE_DIR}/service.yaml" "${OUTPUT_DIR}/service.yaml"
 cp "${SOURCE_DIR}/secret.example.yaml" "${OUTPUT_DIR}/secret.example.yaml"
 cp "${SOURCE_DIR}/middleware.yaml" "${OUTPUT_DIR}/middleware.yaml"
+cp "${SOURCE_DIR}/servers-transport.yaml" "${OUTPUT_DIR}/servers-transport.yaml"
 cp "${SOURCE_DIR}/hpa.yaml" "${OUTPUT_DIR}/hpa.yaml"
 cp "${SOURCE_DIR}/pdb.yaml" "${OUTPUT_DIR}/pdb.yaml"
 
