@@ -26,7 +26,7 @@ object LocationApiService {
                 }.toString().toRequestBody("application/json".toMediaType())
 
                 val request = Request.Builder()
-                    .url("$BASE_URL/api/location")
+                    .url("$BASE_URL/api/location")  // Traefik이 /api 붙여서 라우팅
                     .post(body)
                     .build()
 

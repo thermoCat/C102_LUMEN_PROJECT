@@ -13,7 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Tag(name = "Location", description = "실시간 보행자 위치")
 @RestController
-@RequestMapping("/api/location")
+@RequestMapping("/location")
 public class LocationController {
 
     private final LocationService locationService;
