@@ -1,37 +1,45 @@
 # Monitoring
 
-이 디렉터리는 `kube-prometheus-stack` 기반 monitoring 구성을 담고 있습니다.
+This directory contains the `kube-prometheus-stack` values used for the
+SmartCane k3s cluster.
 
-## 현재 상태
+## Access URLs
 
-- 예전 클러스터에서는 Grafana, Prometheus, Alertmanager 구성을 사용했음
-- 새 Tailscale 기반 클러스터로 재구성한 뒤에는 아직 monitoring 을 다시 설치하지 않음
-- 따라서 현재 이 디렉터리는 `재설치용 기준 설정` 으로 봐야 한다
+- Grafana: `https://k14c102.p.ssafy.io/grafana`
+- Prometheus: `https://k14c102.p.ssafy.io/prometheus`
+- Alertmanager: `https://k14c102.p.ssafy.io/alertmanager`
 
-## 포함 파일
+## What Each Tool Is For
+
+- Grafana
+  - Primary operations dashboard
+  - Check CPU, memory, pod health, and node-level trends here first
+- Prometheus
+  - Raw metrics and PromQL queries
+  - Use it when you need to confirm that a metric is really being scraped or to test a query directly
+- Alertmanager
+  - Alert status and incident handling
+  - Use it to review firing alerts and to silence noisy alerts during maintenance windows
+
+## Files
 
 - `kube-prometheus-stack-values.yaml`
-  - 공용 기본값
+  - Base shared values
 - `kube-prometheus-stack-values.prod.example.yaml`
-  - 운영용 값 예시
+  - Production example values
 - `README.md`
 
-## 재설치 시 목표 경로
-
-- Grafana: `http://k14c102.p.ssafy.io/grafana`
-- Prometheus: `http://k14c102.p.ssafy.io/prometheus`
-- Alertmanager: `http://k14c102.p.ssafy.io/alertmanager`
-
-## 운영 파일 생성
+## Production Setup
 
 ```bash
 cp infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.example.yaml \
   infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
 ```
 
-`kube-prometheus-stack-values.prod.yaml` 은 Git에 커밋하지 않는다.
+Set a real Grafana admin password in `kube-prometheus-stack-values.prod.yaml`
+before applying it.
 
-## 설치 순서
+## Install Or Upgrade
 
 ```bash
 kubectl create namespace monitoring
@@ -42,21 +50,32 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   -f infra/k3s/platform/monitoring/kube-prometheus-stack-values.prod.yaml
 ```
 
-## 설치 후 확인
+## Basic Checks
 
 ```bash
 kubectl get pods -n monitoring
 kubectl get ingress -n monitoring
+kubectl get certificate -n monitoring
 ```
 
-## 새 클러스터에서 확인하고 싶은 항목
+## Included Starter Alerts
 
-- backend pod 상태
-- 노드 CPU / 메모리 사용량
-- ingress 5xx 비율
-- worker 노드에 분산된 backend pod 상태
+The values files include a small starter ruleset through
+`additionalPrometheusRulesMap`.
 
-## 메모
+- `SmartCaneBackendDeploymentReplicasMismatch`
+  - Fires when available backend replicas do not match the desired count for 5 minutes
+- `SmartCaneBackendPodsRestarting`
+  - Fires when backend containers keep restarting
+- `SmartCaneWorkerNodeNotReady`
+  - Fires when worker node B or C is NotReady for 5 minutes
+- `SmartCaneBackendHighCpu`
+  - Fires when backend CPU usage stays above 80 percent of configured limits
+- `SmartCaneBackendHighMemory`
+  - Fires when backend memory usage stays above 85 percent of configured limits
 
-- 예전에는 worker endpoint 접근 문제 때문에 monitoring ingress가 불안정했다
-- 새 클러스터는 Tailscale 기반 data plane 이므로, monitoring 도 이전보다 안정적으로 구성될 가능성이 높다
+## Recommended Daily Flow
+
+1. Open Grafana first to see cluster and backend health at a glance.
+2. If something looks wrong, inspect the raw metric or PromQL query in Prometheus.
+3. If an alert is firing, use Alertmanager to confirm status and silence it during controlled maintenance if needed.
