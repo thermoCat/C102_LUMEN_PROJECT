@@ -152,7 +152,7 @@ const walkerLayer = new ol.layer.Vector({ source: walkerSource });
 const walkers = {};      // deviceId → feature
 const walkerSeen = {};   // deviceId → lastSeen timestamp
 
-const WALKER_TIMEOUT_MS = 10000;
+const WALKER_TIMEOUT_MS = 4000;
 
 setInterval(() => {
   const now = Date.now();
