@@ -318,6 +318,7 @@ fun BleTestScreen(bleManager: BleNusManager) {
                         trackingJob = null
                         isTracking = false
                         logHistory.add("위치 추적 중지")
+                        scope.launch { LocationApiService.sendStop(deviceId) }
                     } else {
                         isTracking = true
                         logHistory.add("위치 추적 시작 (3초 간격)")

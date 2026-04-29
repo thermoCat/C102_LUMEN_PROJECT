@@ -59,6 +59,11 @@ public class LocationService implements MessageListener {
         redisTemplate.convertAndSend(RedisConfig.LOCATION_CHANNEL, json);
     }
 
+    public void publishStop(String deviceId) {
+        String json = "{\"deviceId\":\"%s\",\"stop\":true}".formatted(deviceId);
+        redisTemplate.convertAndSend(RedisConfig.LOCATION_CHANNEL, json);
+    }
+
     public SseEmitter subscribe() {
         SseEmitter emitter = new SseEmitter(0L);
         emitters.add(emitter);
@@ -71,10 +76,13 @@ public class LocationService implements MessageListener {
     @Override
     public void onMessage(Message message, byte[] pattern) {
         String json = new String(message.getBody());
+        boolean isStop = json.contains("\"stop\":true");
+        String eventName = isStop ? "location-stop" : "location";
+
         List<SseEmitter> dead = new java.util.ArrayList<>();
         for (SseEmitter emitter : emitters) {
             try {
-                emitter.send(SseEmitter.event().name("location").data(json));
+                emitter.send(SseEmitter.event().name(eventName).data(json));
             } catch (IOException e) {
                 dead.add(emitter);
             }
