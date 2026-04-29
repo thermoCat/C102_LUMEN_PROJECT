@@ -164,6 +164,7 @@ function removeWalker(deviceId) {
   delete walkerSeen[deviceId];
   walkerStopped[deviceId] = Date.now();
   document.getElementById('walker-count').textContent = Object.keys(walkers).length;
+  if (map) map.render();
 }
 
 setInterval(() => {
@@ -191,9 +192,11 @@ function walkerStyle() {
 }
 
 let currentEs = null;
+let reconnectTimer = null;
 
 function connectSse() {
   if (currentEs) {
+    currentEs.onerror = null; // close 시 onerror 재발동 방지
     currentEs.close();
     currentEs = null;
   }
@@ -230,8 +233,14 @@ function connectSse() {
   es.onerror = () => {
     statusEl.textContent = 'SSE 재연결 중...';
     statusEl.className = '';
+    es.onerror = null;
     es.close();
-    setTimeout(connectSse, 3000);
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectSse();
+      }, 3000);
+    }
   };
 }
 
