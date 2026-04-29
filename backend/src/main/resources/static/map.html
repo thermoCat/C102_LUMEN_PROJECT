@@ -180,6 +180,16 @@ function connectSse() {
   const es = new EventSource('/api/location/stream');
   const statusEl = document.getElementById('sse-status');
 
+  es.addEventListener('location-stop', e => {
+    const { deviceId } = JSON.parse(e.data);
+    if (walkers[deviceId]) {
+      walkerSource.removeFeature(walkers[deviceId]);
+      delete walkers[deviceId];
+      delete walkerSeen[deviceId];
+      document.getElementById('walker-count').textContent = Object.keys(walkers).length;
+    }
+  });
+
   es.addEventListener('location', e => {
     const { deviceId, lat, lng } = JSON.parse(e.data);
     const coord = ol.proj.fromLonLat([lng, lat]);

@@ -29,6 +29,13 @@ public class LocationController {
         return ResponseEntity.ok().build();
     }
 
+    @Operation(summary = "앱 → 서버 위치 추적 중지")
+    @DeleteMapping("/{deviceId}")
+    public ResponseEntity<Void> stop(@PathVariable String deviceId) {
+        locationService.publishStop(deviceId);
+        return ResponseEntity.ok().build();
+    }
+
     @Operation(summary = "map.html SSE 스트림 구독")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(HttpServletResponse response) {

@@ -33,4 +33,15 @@ object LocationApiService {
                 client.newCall(request).execute().close()
             }
         }
+
+    suspend fun sendStop(deviceId: String) =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val request = Request.Builder()
+                    .url("$BASE_URL/api/location/$deviceId")
+                    .delete()
+                    .build()
+                client.newCall(request).execute().close()
+            }
+        }
 }
