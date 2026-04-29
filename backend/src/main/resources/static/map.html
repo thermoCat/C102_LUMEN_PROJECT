@@ -154,7 +154,7 @@ const walkerSeen = {};    // deviceId → lastSeen timestamp
 const walkerStopped = {}; // deviceId → stopped timestamp (블랙리스트)
 
 const WALKER_TIMEOUT_MS = 5000;
-const WALKER_STOP_BLOCK_MS = 1000;
+const WALKER_STOP_BLOCK_MS = 100;
 
 function removeWalker(deviceId) {
   if (walkers[deviceId]) {
