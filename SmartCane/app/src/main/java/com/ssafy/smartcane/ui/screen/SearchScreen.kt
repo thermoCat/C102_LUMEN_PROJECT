@@ -2,7 +2,7 @@
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.Context
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
@@ -89,6 +89,7 @@ import com.ssafy.smartcane.data.model.RouteDestination
 import com.ssafy.smartcane.data.model.SearchResult
 import com.ssafy.smartcane.network.KakaoPlace
 import com.ssafy.smartcane.network.KakaoLocalSearchService
+import com.ssafy.smartcane.network.formatDistance
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.component.NavBtn
@@ -100,10 +101,25 @@ import com.ssafy.smartcane.ui.theme.NavDivider
 import com.ssafy.smartcane.ui.theme.NavGray
 import com.ssafy.smartcane.ui.theme.NavLightGray
 import com.ssafy.smartcane.ui.theme.NavYellow
-import kotlin.math.roundToInt
 import kotlin.random.Random
 
 private enum class SearchSub { Main, VoiceReady, VoiceListening, Results }
+
+private fun voiceSearchIntent(context: android.content.Context): Intent =
+    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ko-KR")
+        putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false)
+        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        putExtra(RecognizerIntent.EXTRA_PROMPT, "음성으로 검색")
+        putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 6_000L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2_000L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1_500L)
+        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+    }
 
 @Composable
 private fun SpeechRecognizerEffect(
@@ -175,12 +191,7 @@ private fun SpeechRecognizerEffect(
         }
 
         runCatching { recognizer.cancel() }
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "음성으로 검색")
-        }
+        val intent = voiceSearchIntent(context)
         runCatching { recognizer.startListening(intent) }
             .onFailure { onErrorState.value(SpeechRecognizer.ERROR_CLIENT) }
     }
@@ -217,6 +228,20 @@ fun SearchScreen(
             sub = SearchSub.Main
         }
     }
+    val externalVoiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val spokenText = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            ?.trim()
+        if (result.resultCode == Activity.RESULT_OK && !spokenText.isNullOrEmpty()) {
+            query = spokenText
+            sub = SearchSub.Results
+        } else {
+            sub = SearchSub.Main
+        }
+    }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -245,7 +270,8 @@ fun SearchScreen(
 
     fun startVoiceRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            sub = SearchSub.Main
+            runCatching { externalVoiceLauncher.launch(voiceSearchIntent(context)) }
+                .onFailure { sub = SearchSub.Main }
             return
         }
 
@@ -322,19 +348,7 @@ fun SearchScreen(
             query = spokenText
             sub = SearchSub.Results
         },
-        onError = { error ->
-            sub = when (error) {
-                SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                SpeechRecognizer.ERROR_SERVER,
-                SpeechRecognizer.ERROR_CLIENT,
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
-                SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> SearchSub.Results
-
-                else -> SearchSub.Main
-            }
-        }
+        onError = { sub = SearchSub.Main }
     )
 
     when (sub) {
@@ -380,8 +394,8 @@ fun SearchScreen(
 }
 
 @SuppressLint("MissingPermission")
-private fun lastKnownLocation(context: Context): Location? {
-    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+private fun lastKnownLocation(context: android.content.Context): Location? {
+    val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager
         ?: return null
     val providers = runCatching { locationManager.getProviders(true) }.getOrDefault(emptyList())
     return providers
@@ -397,7 +411,7 @@ private fun defaultGwangjuLocation(): Location =
         longitude = 126.8526
     }
 
-private fun currentKoreaLocation(context: Context): Location {
+private fun currentKoreaLocation(context: android.content.Context): Location {
     val location = lastKnownLocation(context)
     return if (location != null && location.isInKorea()) {
         location
@@ -473,6 +487,7 @@ private fun SearchBrowseView(
             SearchMainScrollContent(
                 nearbyPlaces = nearbyPlaces,
                 onOpenSearch = onOpenSearch,
+                onVoice = onVoice,
                 onPlaceClick = onNearbySelect,
                 modifier = Modifier
                     .weight(1f)
@@ -598,7 +613,7 @@ private fun SearchBrowseView(
                 exit = fadeOut(tween(240, easing = FastOutSlowInEasing))
             ) {
                 Column(modifier = Modifier.padding(horizontal = 10.dp)) {
-                    Spacer(Modifier.height(22.dp))
+                    Spacer(Modifier.height(24.dp))
                     Text(
                         text = "주변 위치 검색 결과",
                         color = AppWhite,
@@ -708,6 +723,7 @@ private fun SearchBrowseView(
 private fun SearchMainScrollContent(
     nearbyPlaces: List<KakaoPlace>,
     onOpenSearch: () -> Unit,
+    onVoice: () -> Unit,
     onPlaceClick: (KakaoPlace) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -771,12 +787,7 @@ private fun SearchMainScrollContent(
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             item {
-                Text(
-                    text = "위치 검색",
-                    color = AppWhite,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                SearchTitleRow(onVoice = onVoice)
                 Spacer(Modifier.height(10.dp))
             }
 
@@ -833,10 +844,68 @@ private fun SearchMainScrollContent(
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium
             )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 10.dp)
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(NavYellow.copy(alpha = compactTitleAlpha))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onVoice() }
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "음성 검색",
+                    color = Color(0xFF121212).copy(alpha = compactTitleAlpha),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
             HorizontalDivider(
                 color = NavGray.copy(alpha = compactTitleAlpha),
                 thickness = 0.5.dp,
                 modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchTitleRow(onVoice: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "위치 검색",
+            color = AppWhite,
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
+            modifier = Modifier
+                .height(40.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(NavYellow)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onVoice() }
+                .padding(horizontal = 18.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "음성 검색",
+                color = Color(0xFF121212),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
             )
         }
     }
@@ -858,7 +927,8 @@ private fun NearbySectionTitleBlock(
             text = "\uc8fc\ubcc0 \uc704\uce58 \uac80\uc0c9 \uacb0\uacfc",
             color = AppWhite.copy(alpha = alpha),
             fontSize = 24.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(top = 4.dp)
         )
         Spacer(Modifier.height(10.dp))
     }
@@ -933,7 +1003,8 @@ private fun NearbyRecommendationSection(
                         text = "주변 위치 검색 결과",
                         color = AppWhite,
                         fontSize = 24.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                     Spacer(Modifier.height(10.dp))
                 }
@@ -1017,7 +1088,7 @@ private fun NearbyRecommendationRow(
             Text(
                 text = place.addressName.ifBlank { place.roadAddressName },
                 color = NavGray,
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1026,7 +1097,7 @@ private fun NearbyRecommendationRow(
             Text(
                 text = place.placeName,
                 color = AppWhite,
-                fontSize = 24.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1035,312 +1106,34 @@ private fun NearbyRecommendationRow(
     }
 }
 
-private fun formatDistance(distanceMeters: Int): String {
-    if (distanceMeters <= 0) return "-"
-    if (distanceMeters >= 10000) return "${distanceMeters / 1000}km"
-
-    val kilometers = distanceMeters / 1000f
-    return if (kilometers >= 1f) {
-        val text = String.format(java.util.Locale.US, "%.1f", kilometers).removeSuffix(".0")
-        "${text}km"
-    } else {
-        "${distanceMeters}m"
-    }
-}
-
-/*
-@Composable
-private fun SearchHeaderContent() {
-    Column {
-        Text(
-            text = "위치 검색",
-            color = AppWhite,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = "직접 입력하거나 음성으로 검색하세요",
-            color = AppWhite,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium
-        )
-        Spacer(Modifier.height(12.dp))
-    }
-}
-
-@Composable
-private fun SearchBar(
-    inResults: Boolean,
-    query: String,
-    cancelSlotWidth: androidx.compose.ui.unit.Dp,
-    searchBarTrailingSpace: androidx.compose.ui.unit.Dp,
-    onOpenSearch: () -> Unit,
-    onQueryChange: (String) -> Unit,
-    onCancel: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = searchBarTrailingSpace)
-                .clip(RoundedCornerShape(10.dp))
-                .background(NavBg2)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) {
-                    if (!inResults) onOpenSearch()
-                }
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_search_field),
-                contentDescription = null,
-                tint = if (inResults) NavLightGray else NavGray,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-
-            if (inResults) {
-                BasicTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    cursorBrush = SolidColor(AppWhite),
-                    textStyle = TextStyle(
-                        color = AppWhite,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = (-0.6).sp
-                    )
-                )
-            } else {
-                Text(
-                    text = "도로명 주소로 검색해주세요",
-                    color = AppWhite,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Normal
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .width(cancelSlotWidth),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            AnimatedVisibility(
-                visible = cancelSlotWidth >= 72.dp,
-                enter = fadeIn(tween(100, delayMillis = 0, easing = FastOutSlowInEasing)),
-                exit = fadeOut(tween(100, easing = FastOutSlowInEasing))
-            ) {
-                Text(
-                    text = "검색 취소",
-                    color = AppWhite,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clickable(onClick = onCancel)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StickySearchBrowseView(
-    inResults: Boolean,
-    query: String,
-    results: List<SearchResult>,
-    onOpenSearch: () -> Unit,
-    onVoice: () -> Unit,
-    onQueryChange: (String) -> Unit,
-    onCancel: () -> Unit,
-    onSelect: (SearchResult) -> Unit,
-    onToggleStar: (Int) -> Unit,
-    onTabChange: (NavTab) -> Unit
-) {
-    val topPadding by animateDpAsState(
-        targetValue = if (inResults) 12.dp else 22.dp,
-        animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
-    )
-    val cancelSlotWidth by animateDpAsState(
-        targetValue = if (inResults) 72.dp else 0.dp,
-        animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
-    )
-    val searchBarTrailingSpace by animateDpAsState(
-        targetValue = if (inResults) 82.dp else 0.dp,
-        animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(NavBg)
-    ) {
-        if (inResults) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 20.dp, vertical = topPadding)
-            ) {
-                SearchBar(
-                    inResults = true,
-                    query = query,
-                    cancelSlotWidth = cancelSlotWidth,
-                    searchBarTrailingSpace = searchBarTrailingSpace,
-                    onOpenSearch = onOpenSearch,
-                    onQueryChange = onQueryChange,
-                    onCancel = onCancel
-                )
-
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = NavDivider, thickness = 0.5.dp)
-                Spacer(Modifier.height(20.dp))
-
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    results.forEach { result ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(0.5.dp, NavDivider, RoundedCornerShape(12.dp))
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) { onSelect(result) }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = result.name,
-                                    color = AppWhite,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) { onToggleStar(result.id) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painter = painterResource(
-                                            if (result.starred) R.drawable.ic_star_filled else R.drawable.ic_star_outline
-                                        ),
-                                        contentDescription = null,
-                                        tint = NavYellow,
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                }
-                            }
-                            HorizontalDivider(color = NavDivider, thickness = 0.5.dp)
-                            Text(
-                                text = result.addr,
-                                color = AppWhite,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(top = 22.dp, bottom = 24.dp)
-            ) {
-                item {
-                    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                        SearchHeaderContent()
-                    }
-                }
-                stickyHeader {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(NavBg)
-                            .padding(horizontal = 20.dp, vertical = 6.dp)
-                    ) {
-                        SearchBar(
-                            inResults = false,
-                            query = query,
-                            cancelSlotWidth = 0.dp,
-                            searchBarTrailingSpace = 0.dp,
-                            onOpenSearch = onOpenSearch,
-                            onQueryChange = onQueryChange,
-                            onCancel = onCancel
-                        )
-                    }
-                }
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 140.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        NavBtn(
-                            filled = true,
-                            big = true,
-                            onClick = onVoice
-                        )
-                    }
-                }
-            }
-        }
-
-        BottomNav(active = NavTab.Search, onTab = onTabChange)
-    }
-}
-
-*/
 @Composable
 private fun VoiceOverlay(
     listening: Boolean,
     onCancel: () -> Unit,
     onTabChange: (NavTab) -> Unit
 ) {
-    var mockAudioLevel by remember { mutableStateOf(0f) }
+    var audioLevel by remember { mutableStateOf(0f) }
     val wave1Alpha by animateFloatAsState(
-        targetValue = if (!listening || mockAudioLevel < 0.2f) 0f else 0.3f,
+        targetValue = if (!listening || audioLevel < 0.2f) 0f else 0.3f,
         animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
     )
     val wave2Alpha by animateFloatAsState(
-        targetValue = if (!listening || mockAudioLevel < 0.45f) 0f else 0.2f,
+        targetValue = if (!listening || audioLevel < 0.45f) 0f else 0.2f,
         animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
     )
     val wave3Alpha by animateFloatAsState(
-        targetValue = if (!listening || mockAudioLevel < 0.6f) 0f else 0.1f,
+        targetValue = if (!listening || audioLevel < 0.6f) 0f else 0.1f,
         animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
     )
 
     LaunchedEffect(listening) {
         if (!listening) {
-            mockAudioLevel = 0f
+            audioLevel = 0f
             return@LaunchedEffect
         }
 
         while (true) {
-            mockAudioLevel = Random.nextFloat()
+            audioLevel = Random.nextFloat()
             kotlinx.coroutines.delay(Random.nextLong(140L, 320L))
         }
     }

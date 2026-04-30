@@ -1,7 +1,6 @@
 package com.ssafy.smartcane.network
 
 import android.util.Log
-import com.ssafy.smartcane.data.MockDataSource
 import com.ssafy.smartcane.data.model.NavigationState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +13,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import okio.ByteString.Companion.toByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -53,7 +51,6 @@ class WebSocketManager(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure: ${t.message}")
                 isConnected.set(false)
-                onStateReceived(MockDataSource.getMockNavigationState())
                 scheduleReconnect()
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -87,10 +84,6 @@ class WebSocketManager(
         } catch (e: Exception) {
             Log.e(TAG, "Parse error: ${e.message}")
         }
-    }
-
-    fun sendFrame(jpegBytes: ByteArray) {
-        if (isConnected.get()) webSocket?.send(jpegBytes.toByteString())
     }
 
     fun disconnect() {

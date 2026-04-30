@@ -18,7 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-import com.ssafy.smartcane.data.model.defaultFavorites
+import com.ssafy.smartcane.data.model.FavItem
 import com.ssafy.smartcane.data.model.RouteDestination
 import com.ssafy.smartcane.ui.screen.FavScreen
 import com.ssafy.smartcane.ui.screen.RouteScreen
@@ -31,7 +31,7 @@ import com.ssafy.smartcane.viewmodel.NavigationViewModel
 @Composable
 fun NavigationScreen(viewModel: NavigationViewModel) {
     var tab by remember { mutableStateOf(NavTab.Search) }
-    var favorites by remember { mutableStateOf(defaultFavorites) }
+    var favorites by remember { mutableStateOf(emptyList<FavItem>()) }
     var safetyEnabled by remember { mutableStateOf(false) }
     var destination by remember { mutableStateOf<RouteDestination?>(null) }
     val screenBackground = when {

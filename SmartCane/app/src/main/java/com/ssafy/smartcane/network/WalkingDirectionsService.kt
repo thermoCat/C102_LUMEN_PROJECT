@@ -83,6 +83,12 @@ class WalkingDirectionsService(
         val points = mutableListOf<RoutePoint>()
         val instructions = mutableListOf<RouteInstruction>()
 
+        val resultCode = route.optInt("result_code", 0)
+        if (resultCode != 0) {
+            Log.e(TAG, "Walking directions result failed: code=$resultCode, message=${route.optString("result_message")}")
+            return null
+        }
+
         for (sectionIndex in 0 until sections.length()) {
             val section = sections.optJSONObject(sectionIndex) ?: continue
             val roads = section.optJSONArray("roads") ?: JSONArray()
@@ -102,8 +108,7 @@ class WalkingDirectionsService(
                 val duration = road.optInt("duration", 0)
                 if (distance > 0 || duration > 0) {
                     instructions += RouteInstruction(
-                        title = road.optString("n" +
-                                "ame").ifBlank { "도보 이동" },
+                        title = road.optString("name").ifBlank { "도보 이동" },
                         distanceMeters = distance,
                         durationSeconds = duration
                     )
@@ -120,7 +125,7 @@ class WalkingDirectionsService(
         return WalkingRoutePlan(
             distanceMeters = totalDistance,
             durationSeconds = totalDuration,
-            points = points.distinct(),
+            points = points,
             instructions = instructions.ifEmpty {
                 listOf(
                     RouteInstruction(

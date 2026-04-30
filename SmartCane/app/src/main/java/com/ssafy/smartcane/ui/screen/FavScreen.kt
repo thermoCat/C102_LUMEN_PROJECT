@@ -170,7 +170,7 @@ private fun FavListView(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = 64.dp)
+                        .padding(top = 56.dp)
                 ) {
                     Text(
                         text = "\uc990\uaca8\ucc3e\uae30",
@@ -214,26 +214,26 @@ private fun FavListView(
                             Spacer(Modifier.height(10.dp))
                         }
                     }
-                    stickyHeader {
-                        FavSectionTitleBlock()
-                    }
                     items(favorites, key = { it.id }) { item ->
+                        val index = favorites.indexOfFirst { it.id == item.id }
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onOpen(item) }
-                                .padding(horizontal = 40.dp, vertical = 12.dp)
+                                .padding(horizontal = 40.dp)
+                                .padding(top = if (index == 0) 7.dp else 14.dp, bottom = 14.dp)
                         ) {
                             Text(
                                 text = item.addr,
                                 color = NavGray,
-                                fontSize = 20.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Normal
                             )
+                            Spacer(Modifier.height(4.dp))
                             Text(
                                 text = item.name.take(12),
                                 color = AppWhite,
-                                fontSize = 24.sp,
+                                fontSize = 22.sp,
                                 fontWeight = FontWeight.Normal,
                                 maxLines = 1
                             )
@@ -272,28 +272,6 @@ private fun FavListView(
             }
         }
         BottomNav(active = NavTab.Fav, onTab = onTabChange)
-    }
-}
-
-@Composable
-private fun FavSectionTitleBlock(
-    modifier: Modifier = Modifier,
-    alpha: Float = 1f
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(NavBg)
-            .padding(horizontal = 30.dp)
-    ) {
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "\uc990\uaca8\ucc3e\uae30 \ubaa9\ub85d",
-            color = AppWhite.copy(alpha = alpha),
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Medium
-        )
-        Spacer(Modifier.height(10.dp))
     }
 }
 
