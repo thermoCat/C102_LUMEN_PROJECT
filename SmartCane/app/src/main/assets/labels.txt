@@ -1,3 +1,10 @@
+person
+bicycle
+car
+motorcycle
+bus
+truck
+scooter
 pole
 bollard
 barricade
