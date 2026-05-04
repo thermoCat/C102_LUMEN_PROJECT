@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -75,7 +77,9 @@ import com.kakao.vectormap.route.RouteLineStylesSet
 import com.ssafy.smartcane.BuildConfig
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.data.model.RouteDestination
+import com.ssafy.smartcane.network.DirectionCue
 import com.ssafy.smartcane.network.KakaoLocalSearchService
+import com.ssafy.smartcane.network.RouteInstruction
 import com.ssafy.smartcane.network.RoutePoint
 import com.ssafy.smartcane.network.WalkingDirectionsService
 import com.ssafy.smartcane.network.WalkingRoutePlan
@@ -88,11 +92,13 @@ import com.ssafy.smartcane.ui.theme.AppWhite
 import com.ssafy.smartcane.ui.theme.NavBg
 import com.ssafy.smartcane.ui.theme.NavDivider
 import com.ssafy.smartcane.ui.theme.NavGray
+import com.ssafy.smartcane.ui.theme.NavGreen
 import com.ssafy.smartcane.ui.theme.NavLightGray
+import com.ssafy.smartcane.ui.theme.NavRed
 import com.ssafy.smartcane.ui.theme.NavYellow
 
 private enum class RouteSub { Main, Simple, Navigation }
-private const val USE_DUMMY_ROUTE_MAP = true
+private const val USE_DUMMY_ROUTE_MAP = false
 
 @Composable
 fun RouteScreen(
@@ -125,7 +131,7 @@ fun RouteScreen(
 
     CurrentLocationEffect(
         enabled = hasLocationPermission,
-        onLocation = { currentLocation = it }
+        onLocation = { currentLocation = it.asKoreaRouteOrigin() }
     )
 
     LaunchedEffect(currentLocation, destination?.longitude, destination?.latitude) {
@@ -157,7 +163,7 @@ fun RouteScreen(
             destinationLatitude = destLatitude
         )
         if (routePlan == null) {
-            routeMessage = "도보 경로를 불러올 수 없습니다."
+            routeMessage = "\uacbd\ub85c\ub97c \uac00\uc838\uc624\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. API \ud0a4, \uc81c\ud734 \uad8c\ud55c, \ucd9c\ubc1c/\ubaa9\uc801\uc9c0 \uc88c\ud45c\ub97c \ud655\uc778\ud574\uc8fc\uc138\uc694."
         } else {
             routeOriginLocation = origin
             routeDestinationKey = destinationKey
@@ -187,7 +193,7 @@ fun RouteScreen(
             onTabChange = onTabChange
         )
 
-        RouteSub.Simple -> SimpleRouteView(
+        RouteSub.Simple -> ExampleRouteGuideView(
             destName = destName,
             routePlan = routePlan,
             onDone = { sub = RouteSub.Main },
@@ -215,6 +221,22 @@ fun RouteScreen(
 private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+private fun Location.asKoreaRouteOrigin(): Location =
+    if (isInKorea()) {
+        this
+    } else {
+        defaultGwangjuLocation()
+    }
+
+private fun Location.isInKorea(): Boolean =
+    latitude in 33.0..39.5 && longitude in 124.0..132.0
+
+private fun defaultGwangjuLocation(): Location =
+    Location("default").apply {
+        latitude = 35.1595
+        longitude = 126.8526
+    }
 
 @SuppressLint("MissingPermission")
 private fun lastKnownLocation(context: Context): Location? {
@@ -275,15 +297,6 @@ private fun RouteMainView(
                     HorizontalDivider(color = NavDivider, thickness = 1.dp)
                     RouteInfoRow("예상시간", estimatedTime)
                 }
-                if (routeMessage.isNotBlank()) {
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        text = routeMessage,
-                        color = NavLightGray,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                }
                 Spacer(Modifier.height(20.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     NavBtn("길 안내 및 안전 보행 시작", filled = true, big = true, onClick = onNavigation)
@@ -308,20 +321,178 @@ private fun RouteInfoRow(label: String, value: String) {
             text = label,
             color = NavGray,
             fontSize = 20.sp,
-            fontWeight = FontWeight.Normal,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Clip,
             modifier = Modifier.width(86.dp)
         )
         Text(
             text = value,
-            color = NavGray,
+            color = AppWhite,
             fontSize = 20.sp,
-            fontWeight = FontWeight.Light,
+            fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+@Composable
+private fun ExampleRouteGuideView(
+    destName: String,
+    routePlan: WalkingRoutePlan?,
+    onDone: () -> Unit,
+    onTabChange: (NavTab) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(NavBg)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(Modifier.width(44.dp))
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "\uacbd\ub85c \uc548\ub0b4",
+                    color = AppWhite,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Text(
+                text = "\uc644\ub8cc",
+                color = AppWhite,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable(onClick = onDone)
+            )
+        }
+        HorizontalDivider(color = Color(0xFF2B2B2B), thickness = 1.dp)
+        if (routePlan == null) {
+            Spacer(Modifier.weight(1f))
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(10.dp)
+            ) {
+                item {
+                    StartRouteRow()
+                }
+                items(routePlan.instructions) { item ->
+                    ExampleRouteGuideRow(item = item)
+                }
+                item {
+                    ExampleDestinationRow(destName = destName)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StartRouteRow() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(111.dp)
+            .padding(horizontal = 28.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_route_start),
+            contentDescription = null,
+            tint = NavRed,
+            modifier = Modifier.size(width = 55.dp, height = 65.dp)
+        )
+    }
+    HorizontalDivider(
+        color = NavYellow,
+        thickness = 0.8.dp,
+        modifier = Modifier.padding(horizontal = 24.dp)
+    )
+}
+
+@Composable
+private fun ExampleRouteGuideRow(item: RouteInstruction) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(168.dp)
+            .padding(horizontal = 28.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(item.cue.routeIconRes()),
+            contentDescription = null,
+            tint = Color.Unspecified,
+            modifier = Modifier.size(width = 59.dp, height = 69.dp)
+        )
+        Spacer(Modifier.width(28.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = formatDistance(item.distanceMeters),
+                color = AppWhite,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = item.title,
+                color = AppWhite,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 30.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    HorizontalDivider(
+        color = NavYellow,
+        thickness = 0.8.dp,
+        modifier = Modifier.padding(horizontal = 24.dp)
+    )
+}
+
+@Composable
+private fun ExampleDestinationRow(destName: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(129.dp)
+            .padding(horizontal = 28.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_route_destination),
+            contentDescription = null,
+            tint = NavGreen,
+            modifier = Modifier.size(width = 55.dp, height = 65.dp)
+        )
+        Spacer(Modifier.width(28.dp))
+        Text(
+            text = destName.ifBlank { "\ub3c4\ucc29\uc9c0" },
+            color = AppWhite,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+    HorizontalDivider(
+        color = NavYellow,
+        thickness = 0.8.dp,
+        modifier = Modifier.padding(horizontal = 24.dp)
+    )
 }
 
 @Composable
@@ -408,6 +579,8 @@ private fun SimpleRouteView(
                     .fillMaxWidth(),
                 content = {
                     items(routePlan.instructions) { item ->
+                        RouteGuideRow(item = item)
+                        if (false) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -415,7 +588,7 @@ private fun SimpleRouteView(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_route_straight),
+                                painter = painterResource(item.cue.routeIconRes()),
                                 contentDescription = null,
                                 tint = Color.Unspecified,
                                 modifier = Modifier.size(40.dp, 54.dp)
@@ -438,12 +611,92 @@ private fun SimpleRouteView(
                             }
                         }
                         HorizontalDivider(color = NavDivider, thickness = 0.5.dp)
+                        }
+                    }
+                    item {
+                        DestinationGuideRow(destName = destName)
                     }
                 }
             )
         }
         BottomNav(active = NavTab.Route, onTab = onTabChange)
     }
+}
+
+@Composable
+private fun RouteGuideRow(item: RouteInstruction) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 28.dp)
+            .height(226.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(item.cue.routeIconRes()),
+            contentDescription = null,
+            tint = Color.Unspecified,
+            modifier = Modifier.size(width = 96.dp, height = 116.dp)
+        )
+        Spacer(Modifier.width(34.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = formatDistance(item.distanceMeters),
+                color = AppWhite,
+                fontSize = 54.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                text = item.title,
+                color = AppWhite,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 43.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    HorizontalDivider(
+        color = NavYellow,
+        thickness = 0.8.dp,
+        modifier = Modifier.padding(horizontal = 24.dp)
+    )
+}
+
+@Composable
+private fun DestinationGuideRow(destName: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 28.dp)
+            .height(172.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_route_destination),
+            contentDescription = null,
+            tint = Color.Unspecified,
+            modifier = Modifier.size(width = 96.dp, height = 116.dp)
+        )
+        Spacer(Modifier.width(34.dp))
+        Text(
+            text = destName.ifBlank { "\ub3c4\ucc29\uc9c0" },
+            color = AppWhite,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+    HorizontalDivider(
+        color = NavYellow,
+        thickness = 0.8.dp,
+        modifier = Modifier.padding(horizontal = 24.dp)
+    )
 }
 
 @Composable
@@ -457,14 +710,22 @@ private fun MapNavView(
     onTabChange: (NavTab) -> Unit
 ) {
     var currentFocusRequest by remember { mutableStateOf(0) }
-    val stepCount = routePlan?.instructions?.size?.coerceIn(1, 10) ?: 10
+    var currentStepIndex by remember(routePlan) { mutableStateOf(0) }
+    val routeSteps = remember(routePlan, destName) {
+        routePlan.toNavigationSteps(destName)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(NavBg)
     ) {
-        NavigationRouteHeader(destName = destName, stepCount = stepCount)
+        NavigationRouteHeader(
+            destName = destName,
+            steps = routeSteps,
+            currentStepIndex = currentStepIndex,
+            onStepChange = { currentStepIndex = it }
+        )
         RouteMapView(
             currentLocation = currentLocation,
             destination = destination,
@@ -474,14 +735,6 @@ private fun MapNavView(
                 .weight(1f)
                 .fillMaxWidth()
         )
-        if (routeMessage.isNotBlank()) {
-            Text(
-                text = routeMessage,
-                color = NavLightGray,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
-            )
-        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -539,14 +792,36 @@ private fun MapNavView(
 @Composable
 private fun NavigationRouteHeader(
     destName: String,
-    stepCount: Int
+    steps: List<NavigationStep>,
+    currentStepIndex: Int,
+    onStepChange: (Int) -> Unit
 ) {
+    val safeSteps = steps.ifEmpty {
+        listOf(NavigationStep(title = destName, subtitle = "\uacbd\ub85c \ubd88\ub7ec\uc624\ub294 \uc911"))
+    }
+    val step = safeSteps[currentStepIndex.coerceIn(0, safeSteps.lastIndex)]
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(161.dp)
+            .height(181.dp)
             .background(NavBg)
             .padding(start = 42.dp, top = 54.dp, end = 28.dp)
+            .pointerInput(safeSteps, currentStepIndex) {
+                var dragAmount = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { dragAmount = 0f },
+                    onHorizontalDrag = { _, amount -> dragAmount += amount },
+                    onDragEnd = {
+                        when {
+                            dragAmount < -48f && currentStepIndex < safeSteps.lastIndex ->
+                                onStepChange(currentStepIndex + 1)
+                            dragAmount > 48f && currentStepIndex > 0 ->
+                                onStepChange(currentStepIndex - 1)
+                        }
+                    }
+                )
+            }
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -559,33 +834,76 @@ private fun NavigationRouteHeader(
                 modifier = Modifier.size(width = 36.dp, height = 50.dp)
             )
             Spacer(Modifier.width(42.dp))
-            Text(
-                text = destName,
-                color = AppWhite,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = step.title,
+                    color = AppWhite,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (step.subtitle.isNotBlank()) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        text = step.subtitle,
+                        color = NavLightGray,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(24.dp))
         Row(
             modifier = Modifier.padding(start = 43.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            repeat(stepCount) { index ->
+            safeSteps.forEachIndexed { index, _ ->
                 Box(
                     modifier = Modifier
                         .size(if (index == 0) 8.dp else 7.dp)
                         .background(
-                            color = if (index == 0) AppWhite else Color(0xFF5E5E5E),
+                            color = if (index == currentStepIndex) AppWhite else Color(0xFF5E5E5E),
                             shape = CircleShape
                         )
                 )
             }
         }
+    }
+}
+
+private data class NavigationStep(
+    val title: String,
+    val subtitle: String = ""
+)
+
+private fun WalkingRoutePlan?.toNavigationSteps(destName: String): List<NavigationStep> {
+    if (this == null) return emptyList()
+    return buildList {
+        add(
+            NavigationStep(
+                title = "\ucd9c\ubc1c\uc9c0",
+                subtitle = "\ucd1d ${formatDistance(distanceMeters)} / ${formatDuration(durationSeconds)}"
+            )
+        )
+        instructions.forEach { instruction ->
+            add(
+                NavigationStep(
+                    title = instruction.title,
+                    subtitle = "${formatDistance(instruction.distanceMeters)} / ${formatDuration(instruction.durationSeconds)}"
+                )
+            )
+        }
+        add(
+            NavigationStep(
+                title = destName.ifBlank { "\ub3c4\ucc29\uc9c0" },
+                subtitle = "\ub3c4\ucc29"
+            )
+        )
     }
 }
 
@@ -849,6 +1167,15 @@ private fun RouteLineLayer.drawRoute(points: List<RoutePoint>) {
     val options = RouteLineOptions.from(segment).setStylesSet(stylesSet)
     addRouteLine(options)
 }
+
+private fun DirectionCue.routeIconRes(): Int =
+    when (this) {
+        DirectionCue.START -> R.drawable.ic_route_start
+        DirectionCue.LEFT -> R.drawable.ic_route_left
+        DirectionCue.RIGHT -> R.drawable.ic_route_right
+        DirectionCue.DESTINATION -> R.drawable.ic_route_destination
+        DirectionCue.STRAIGHT -> R.drawable.ic_route_straight
+    }
 
 @Composable
 @SuppressLint("MissingPermission")

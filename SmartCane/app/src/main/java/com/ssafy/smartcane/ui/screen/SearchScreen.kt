@@ -6,11 +6,13 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -104,6 +106,7 @@ import com.ssafy.smartcane.ui.theme.NavYellow
 import kotlin.random.Random
 
 private enum class SearchSub { Main, VoiceReady, VoiceListening, Results }
+private const val NEARBY_SEARCH_TAG = "NearbySearch"
 
 private fun voiceSearchIntent(context: android.content.Context): Intent =
     Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -210,6 +213,8 @@ fun SearchScreen(
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<SearchResult>()) }
     var nearbyPlaces by remember { mutableStateOf(emptyList<KakaoPlace>()) }
+    var currentLocation by remember { mutableStateOf<Location?>(null) }
+    var lastNearbySearchLocation by remember { mutableStateOf<Location?>(null) }
     var voiceStartToken by remember { mutableStateOf(0) }
     var pendingVoiceStart by remember { mutableStateOf(false) }
     var hasLocationPermission by remember {
@@ -301,14 +306,26 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(hasLocationPermission) {
-        if (!hasLocationPermission) return@LaunchedEffect
+    NearbyLocationEffect(
+        enabled = hasLocationPermission,
+        onLocation = { currentLocation = it }
+    )
 
-        val location = currentKoreaLocation(context)
+    LaunchedEffect(currentLocation) {
+        val location = currentLocation ?: return@LaunchedEffect
+        val previous = lastNearbySearchLocation
+        if (previous != null && previous.distanceTo(location) < 50f) return@LaunchedEffect
+
+        Log.d(
+            NEARBY_SEARCH_TAG,
+            "search nearby from lat=${location.latitude}, lng=${location.longitude}, provider=${location.provider}"
+        )
         nearbyPlaces = kakaoLocalSearchService.searchNearbyAttractions(
             longitude = location.longitude,
             latitude = location.latitude
         )
+        Log.d(NEARBY_SEARCH_TAG, "nearby result count=${nearbyPlaces.size}")
+        lastNearbySearchLocation = location
     }
 
     LaunchedEffect(sub, query) {
@@ -393,35 +410,49 @@ fun SearchScreen(
     }
 }
 
+@Composable
 @SuppressLint("MissingPermission")
-private fun lastKnownLocation(context: android.content.Context): Location? {
-    val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager
-        ?: return null
-    val providers = runCatching { locationManager.getProviders(true) }.getOrDefault(emptyList())
-    return providers
-        .mapNotNull { provider ->
-            runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
+private fun NearbyLocationEffect(
+    enabled: Boolean,
+    onLocation: (Location) -> Unit
+) {
+    val context = LocalContext.current
+    val latestOnLocation by rememberUpdatedState(onLocation)
+
+    DisposableEffect(enabled, context) {
+        if (!enabled) {
+            return@DisposableEffect onDispose { }
         }
-        .maxByOrNull { it.time }
-}
 
-private fun defaultGwangjuLocation(): Location =
-    Location("default").apply {
-        latitude = 35.1595
-        longitude = 126.8526
+        val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager
+            ?: return@DisposableEffect onDispose { }
+
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                Log.d(
+                    NEARBY_SEARCH_TAG,
+                    "location update lat=${location.latitude}, lng=${location.longitude}, provider=${location.provider}"
+                )
+                latestOnLocation(location)
+            }
+
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+            override fun onProviderEnabled(provider: String) = Unit
+            override fun onProviderDisabled(provider: String) = Unit
+        }
+
+        val providers = runCatching { locationManager.getProviders(true) }.getOrDefault(emptyList())
+        providers.forEach { provider ->
+            runCatching {
+                locationManager.requestLocationUpdates(provider, 1_500L, 5f, listener)
+            }
+        }
+
+        onDispose {
+            runCatching { locationManager.removeUpdates(listener) }
+        }
     }
-
-private fun currentKoreaLocation(context: android.content.Context): Location {
-    val location = lastKnownLocation(context)
-    return if (location != null && location.isInKorea()) {
-        location
-    } else {
-        defaultGwangjuLocation()
-    }
 }
-
-private fun Location.isInKorea(): Boolean =
-    latitude in 33.0..39.5 && longitude in 124.0..132.0
 
 private fun SearchResult.toRouteDestination(): RouteDestination =
     RouteDestination(
