@@ -1,5 +1,8 @@
 package com.ssafy.smartcane.network
 
+import android.graphics.Bitmap
+import com.ssafy.smartcane.util.HazardType
+import com.ssafy.smartcane.util.ImageEncoder
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,7 +24,7 @@ object HazardApiService {
     suspend fun reportHazard(
         lat: Double,
         lng: Double,
-        type: String = "OBSTACLE",
+        type: String = HazardType.POLE,
         confidence: Double = 1.0,
         imageBase64: String = "",
         description: String = "BLE 테스트 신고"
@@ -53,5 +56,29 @@ object HazardApiService {
         }.getOrElse { e ->
             HazardResult(false, "네트워크 오류: ${e.message}")
         }
+    }
+
+    suspend fun reportWithImage(
+        lat: Double,
+        lng: Double,
+        tfliteLabel: String,
+        confidence: Float,
+        bitmap: Bitmap,
+        description: String? = null
+    ): HazardResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val backendType = HazardType.fromTfliteLabel(tfliteLabel)
+            ?: return@withContext HazardResult(false, "지원하지 않는 라벨: $tfliteLabel")
+
+        val imageBase64 = ImageEncoder.bitmapToBase64(bitmap)
+        val desc = description ?: HazardType.makeDescription(backendType, confidence)
+
+        reportHazard(
+            lat = lat,
+            lng = lng,
+            type = backendType,
+            confidence = confidence.toDouble(),
+            imageBase64 = imageBase64,
+            description = desc
+        )
     }
 }

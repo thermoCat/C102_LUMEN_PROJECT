@@ -92,11 +92,23 @@
   <label style="font-size:13px;color:#aaa">유형 필터:</label>
   <select id="typeFilter" onchange="loadHazards()">
     <option value="">전체</option>
-    <option value="OBSTACLE">장애물</option>
-    <option value="HAZARD_STEP">단차</option>
-    <option value="HAZARD_STAIR">계단</option>
-    <option value="HAZARD_SLOPE">경사로</option>
-    <option value="DAMAGED_PAVEMENT">파손 보도</option>
+    <optgroup label="장애물">
+      <option value="POLE">기둥</option>
+      <option value="BOLLARD">볼라드</option>
+      <option value="BARRICADE">바리케이드</option>
+      <option value="MOVABLE_SIGNAGE">이동식 표지판</option>
+    </optgroup>
+    <optgroup label="손상 보도">
+      <option value="SIDEWALK_DAMAGED">손상된 보도</option>
+      <option value="BRAILLE_GUIDE_BLOCKS_DAMAGED">손상된 점자블록</option>
+      <option value="ALLEY_DAMAGED">손상된 골목길</option>
+    </optgroup>
+    <optgroup label="주의구역">
+      <option value="CAUTION_ZONE_STAIRS">계단</option>
+      <option value="CAUTION_ZONE_MANHOLE">맨홀</option>
+      <option value="CAUTION_ZONE_GRATING">배수구</option>
+      <option value="CAUTION_ZONE_REPAIR_ZONE">공사구역</option>
+    </optgroup>
   </select>
   <button onclick="loadHazards()">새로고침</button>
   <button id="btn-sidewalk" class="toggle-btn" onclick="toggleLayer('sidewalk')">인도 ON</button>
@@ -116,28 +128,46 @@
 
 <div class="legend">
   <h4>위험 유형</h4>
-  <div class="legend-item"><div class="legend-dot" style="background:#f44336"></div> 장애물</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ff5722"></div> 단차</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ff9800"></div> 계단</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div> 경사로</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#e91e63"></div> 파손 보도</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f44336"></div> 기둥</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div> 볼라드</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d32f2f"></div> 바리케이드</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#c62828"></div> 이동식 표지판</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#e91e63"></div> 손상된 보도</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ad1457"></div> 손상된 점자블록</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#880e4f"></div> 손상된 골목길</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff9800"></div> 계단 주의구역</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff5722"></div> 맨홀 주의구역</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#795548"></div> 배수구 주의구역</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div> 공사구역 주의구역</div>
   <div class="legend-item" style="margin-top:8px"><div class="legend-dot" style="background:#29B6F6"></div> 보행자 (실시간)</div>
 </div>
 
 <script>
 const COLORS = {
-  OBSTACLE:         '#f44336',
-  HAZARD_STEP:      '#ff5722',
-  HAZARD_STAIR:     '#ff9800',
-  HAZARD_SLOPE:     '#ffc107',
-  DAMAGED_PAVEMENT: '#e91e63'
+  POLE:                         '#f44336',
+  BOLLARD:                      '#ef5350',
+  BARRICADE:                    '#d32f2f',
+  MOVABLE_SIGNAGE:              '#c62828',
+  SIDEWALK_DAMAGED:             '#e91e63',
+  BRAILLE_GUIDE_BLOCKS_DAMAGED: '#ad1457',
+  ALLEY_DAMAGED:                '#880e4f',
+  CAUTION_ZONE_STAIRS:          '#ff9800',
+  CAUTION_ZONE_MANHOLE:         '#ff5722',
+  CAUTION_ZONE_GRATING:         '#795548',
+  CAUTION_ZONE_REPAIR_ZONE:     '#ffc107'
 };
 const TYPE_KO = {
-  OBSTACLE:         '장애물',
-  HAZARD_STEP:      '단차',
-  HAZARD_STAIR:     '계단',
-  HAZARD_SLOPE:     '경사로',
-  DAMAGED_PAVEMENT: '파손 보도'
+  POLE:                         '기둥',
+  BOLLARD:                      '볼라드',
+  BARRICADE:                    '바리케이드',
+  MOVABLE_SIGNAGE:              '이동식 표지판',
+  SIDEWALK_DAMAGED:             '손상된 보도',
+  BRAILLE_GUIDE_BLOCKS_DAMAGED: '손상된 점자블록',
+  ALLEY_DAMAGED:                '손상된 골목길',
+  CAUTION_ZONE_STAIRS:          '계단 주의구역',
+  CAUTION_ZONE_MANHOLE:         '맨홀 주의구역',
+  CAUTION_ZONE_GRATING:         '배수구 주의구역',
+  CAUTION_ZONE_REPAIR_ZONE:     '공사구역 주의구역'
 };
 
 const osmLayer = new ol.layer.Tile({
