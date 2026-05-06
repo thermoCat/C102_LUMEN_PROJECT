@@ -16,3 +16,7 @@ caution_zone:stairs
 caution_zone:manhole
 caution_zone:grating
 caution_zone:repair_zone
+crosswalk
+green_light
+pedestrian_traffic_light
+red_light
