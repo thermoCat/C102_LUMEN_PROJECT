@@ -27,14 +27,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,7 +52,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ssafy.smartcane.ble.BleNusManager
 import com.ssafy.smartcane.network.HazardApiService
 import com.ssafy.smartcane.network.LocationApiService
@@ -61,23 +62,25 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
-    val context      = LocalContext.current
-    val connState    by bleManager.connectionState.collectAsState()
-    val connName     by bleManager.connectedName.collectAsState()
-    val latestLog    by bleManager.log.collectAsState()
-    val scope          = rememberCoroutineScope()
-    var isReporting    by remember { mutableStateOf(false) }
-    var isTracking     by remember { mutableStateOf(false) }
-    var trackingJob    by remember { mutableStateOf<Job?>(null) }
+    val context   = LocalContext.current
+    val connState by bleManager.connectionState.collectAsState()
+    val connName  by bleManager.connectedName.collectAsState()
+    val latestLog by bleManager.log.collectAsState()
+    val scope     = rememberCoroutineScope()
+
+    var isReporting      by remember { mutableStateOf(false) }
+    var isTracking       by remember { mutableStateOf(false) }
+    var trackingJob      by remember { mutableStateOf<Job?>(null) }
     var locationListener by remember { mutableStateOf<LocationListener?>(null) }
-    var lastLocation   by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    val deviceId       = remember { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
+    var lastLocation     by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val deviceId         = remember {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    }
 
-    // 로그 히스토리 (최대 30줄)
-    val logHistory = remember { mutableStateListOf<String>() }
+    val logHistory  = remember { mutableStateListOf<String>() }
     val scrollState = rememberScrollState()
+    var selectedTab by remember { mutableIntStateOf(0) }
 
-    // 화면 벗어날 때 추적 자동 중지 + GPS listener 해제
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose {
             trackingJob?.cancel()
@@ -91,7 +94,6 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
         }
     }
 
-    // latestLog 변화 감지 → 히스토리에 추가
     androidx.compose.runtime.LaunchedEffect(latestLog) {
         if (latestLog.isNotBlank()) {
             logHistory.add(latestLog)
@@ -100,7 +102,6 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
         }
     }
 
-    // ── 권한 요청 ──────────────────────────────────────────────
     val permissions = remember {
         buildList {
             add(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -124,11 +125,11 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
         val allGranted = permissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
-        if (allGranted) bleManager.connect()
-        else permLauncher.launch(permissions)
+        if (allGranted) bleManager.connect() else permLauncher.launch(permissions)
     }
 
-    // ── UI ─────────────────────────────────────────────────────
+    val isConnected = connState == BleNusManager.ConnectionState.CONNECTED
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color(0xFF1A1A2E)
@@ -136,12 +137,13 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 40.dp),
+                .padding(horizontal = 20.dp)
+                .padding(top = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 제목
+            // ── 제목 ──────────────────────────────────────────
             Text(
-                text = "ESP32 BLE 진동 테스트",
+                text = "앱 테스트 대쉬보드",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = AppWhite
@@ -149,18 +151,13 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
 
             Spacer(Modifier.height(12.dp))
 
-            // 연결 상태 배지
+            // ── 연결 상태 배지 ────────────────────────────────
             val (stateText, stateColor) = when (connState) {
-                BleNusManager.ConnectionState.CONNECTED    ->
-                    ("연결됨: $connName" to Color(0xFF4CAF50))
-                BleNusManager.ConnectionState.CONNECTING  ->
-                    ("연결 중..." to Color(0xFFFFB300))
-                BleNusManager.ConnectionState.SCANNING    ->
-                    ("스캔 중..." to Color(0xFF29B6F6))
-                BleNusManager.ConnectionState.DISCONNECTED ->
-                    ("미연결" to Color(0xFFEF5350))
+                BleNusManager.ConnectionState.CONNECTED    -> "연결됨: $connName" to Color(0xFF4CAF50)
+                BleNusManager.ConnectionState.CONNECTING   -> "연결 중..." to Color(0xFFFFB300)
+                BleNusManager.ConnectionState.SCANNING     -> "스캔 중..." to Color(0xFF29B6F6)
+                BleNusManager.ConnectionState.DISCONNECTED -> "미연결" to Color(0xFFEF5350)
             }
-
             Box(
                 modifier = Modifier
                     .background(stateColor.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
@@ -169,138 +166,341 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
                 Text(text = stateText, color = stateColor, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ── 연결 / 해제 버튼 ─────────────────────────────
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = { connectWithPermCheck() },
-                    modifier = Modifier.weight(1f),
-                    enabled = connState == BleNusManager.ConnectionState.DISCONNECTED,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
-                ) {
-                    Text("자동 연결")
+            // ── 탭 ───────────────────────────────────────────
+            SecondaryTabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color(0xFF0D0D1A),
+                contentColor = AppWhite,
+                indicator = {
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(selectedTab, matchContentSize = false),
+                        color = Color(0xFF29B6F6)
+                    )
                 }
-                Button(
-                    onClick = { bleManager.disconnect() },
-                    modifier = Modifier.weight(1f),
-                    enabled = connState != BleNusManager.ConnectionState.DISCONNECTED,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C))
-                ) {
-                    Text("연결 해제")
+            ) {
+                listOf("제어", "로그").forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = {
+                            Text(
+                                text = title,
+                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedTab == index) Color(0xFF29B6F6) else Color(0xFF90A4AE)
+                            )
+                        }
+                    )
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ── 진동 명령 버튼 ────────────────────────────────
+            // ── 탭 콘텐츠 ─────────────────────────────────────
+            when (selectedTab) {
+                0 -> ControlTab(
+                    isConnected = isConnected,
+                    connState = connState,
+                    context = context,
+                    bleManager = bleManager,
+                    isTracking = isTracking,
+                    isReporting = isReporting,
+                    logHistory = logHistory,
+                    scope = scope,
+                    deviceId = deviceId,
+                    lastLocation = lastLocation,
+                    onConnect = { connectWithPermCheck() },
+                    onDisconnect = { bleManager.disconnect() },
+                    onTrackingToggle = { starting ->
+                        if (!starting) {
+                            trackingJob?.cancel(); trackingJob = null; isTracking = false
+                            locationListener?.let { listener ->
+                                runCatching {
+                                    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                                    lm?.removeUpdates(listener)
+                                }
+                            }
+                            locationListener = null; lastLocation = null
+                            logHistory.add("위치 추적 중지")
+                            scope.launch {
+                                val result = LocationApiService.sendStop(deviceId)
+                                logHistory.add(if (result.isSuccess) "중지 전송 완료 (deviceId=$deviceId)" else "중지 전송 실패: ${result.exceptionOrNull()?.message}")
+                            }
+                        } else {
+                            val fineGranted = ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                            val coarseGranted = ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.ACCESS_COARSE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (!fineGranted && !coarseGranted) {
+                                logHistory.add("위치 권한 필요 - 설정에서 허용 후 다시 시도")
+                                return@ControlTab
+                            }
+                            isTracking = true
+                            logHistory.add("위치 추적 시작 (실시간 GPS, 3초 간격)")
+                            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                            if (lm == null) {
+                                logHistory.add("LocationManager 사용 불가"); isTracking = false; return@ControlTab
+                            }
+                            val listener = object : LocationListener {
+                                override fun onLocationChanged(location: Location) {
+                                    lastLocation = Pair(location.latitude, location.longitude)
+                                }
+                                override fun onProviderEnabled(provider: String) {}
+                                override fun onProviderDisabled(provider: String) {}
+                                @Suppress("DEPRECATION")
+                                override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                            }
+                            locationListener = listener
+                            val providers = runCatching { lm.getProviders(true) }.getOrDefault(emptyList())
+                            if (providers.isEmpty()) {
+                                logHistory.add("활성화된 위치 provider 없음 - 위치 서비스 ON 확인")
+                                isTracking = false; locationListener = null; return@ControlTab
+                            }
+                            runCatching {
+                                providers.forEach { provider ->
+                                    @SuppressLint("MissingPermission")
+                                    lm.requestLocationUpdates(provider, 1000L, 1f, listener, Looper.getMainLooper())
+                                }
+                            }.onFailure { logHistory.add("GPS listener 등록 실패: ${it.message}") }
+                            lastLocation = getLastKnownLocation(context)
+                            trackingJob = scope.launch {
+                                while (true) {
+                                    val loc = lastLocation
+                                    if (loc != null) {
+                                        val result = LocationApiService.sendLocation(deviceId, loc.first, loc.second)
+                                        logHistory.add(if (result.isSuccess) "위치 전송 lat=${loc.first}, lng=${loc.second}" else "전송 실패: ${result.exceptionOrNull()?.message}")
+                                    } else {
+                                        logHistory.add("GPS null - 위치 수신 대기 중")
+                                    }
+                                    if (logHistory.size > 30) logHistory.removeAt(0)
+                                    delay(3000)
+                                }
+                            }
+                        }
+                    },
+                    onReport = {
+                        scope.launch {
+                            isReporting = true
+                            val loc = getLastKnownLocation(context)
+                            if (loc == null) {
+                                logHistory.add("GPS 위치를 가져올 수 없습니다. 위치 권한을 확인하세요.")
+                            } else {
+                                logHistory.add("신고 중... lat=${loc.first}, lng=${loc.second}")
+                                val result = HazardApiService.reportHazard(lat = loc.first, lng = loc.second)
+                                logHistory.add(if (result.success) "[성공] ${result.message}" else "[실패] ${result.message}")
+                            }
+                            if (logHistory.size > 30) logHistory.removeAt(0)
+                            isReporting = false
+                        }
+                    },
+                    onOpenHazardCam = onOpenHazardCam
+                )
+                1 -> LogTab(logHistory = logHistory, scrollState = scrollState)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ControlTab(
+    isConnected: Boolean,
+    connState: BleNusManager.ConnectionState,
+    context: Context,
+    bleManager: BleNusManager,
+    isTracking: Boolean,
+    isReporting: Boolean,
+    logHistory: MutableList<String>,
+    scope: kotlinx.coroutines.CoroutineScope,
+    deviceId: String,
+    lastLocation: Pair<Double, Double>?,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onTrackingToggle: (Boolean) -> Unit,
+    onReport: () -> Unit,
+    onOpenHazardCam: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // ── 연결 / 해제 ────────────────────────────────────
+        SectionLabel("연결")
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = onConnect,
+                modifier = Modifier.weight(1f),
+                enabled = connState == BleNusManager.ConnectionState.DISCONNECTED,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
+            ) { Text("자동 연결") }
+            Button(
+                onClick = onDisconnect,
+                modifier = Modifier.weight(1f),
+                enabled = connState != BleNusManager.ConnectionState.DISCONNECTED,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C))
+            ) { Text("연결 해제") }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ── 진동 명령 ──────────────────────────────────────
+        SectionLabel("진동 명령")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CmdButton("LEFT\n(L)",  Color(0xFFFF6B6B), Modifier.weight(1f), isConnected) { bleManager.sendCommand("L") }
+            CmdButton("RIGHT\n(R)", Color(0xFF6BAAFF), Modifier.weight(1f), isConnected) { bleManager.sendCommand("R") }
+            CmdButton("BOTH\n(B)",  Color(0xFFFFD700), Modifier.weight(1f), isConnected) { bleManager.sendCommand("B") }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CmdButton("OFF\n(O)",  Color(0xFF90A4AE), Modifier.weight(1f), isConnected) { bleManager.sendCommand("O") }
+            CmdButton("PING\n(P)", Color(0xFF80CBC4), Modifier.weight(1f), isConnected) { bleManager.sendCommand("P") }
+            Spacer(Modifier.weight(1f))
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ── 임시 테스트 ────────────────────────────────────
+        SectionLabel("임시 테스트")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                onClick = { bleManager.sendCommand("G") },
+                modifier = Modifier.weight(1f).height(56.dp),
+                enabled = isConnected,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF43A047),
+                    disabledContainerColor = Color(0xFF43A047).copy(alpha = 0.2f)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("진동 ON\n(G)", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center, lineHeight = 16.sp)
+            }
+            Button(
+                onClick = { bleManager.sendCommand("O") },
+                modifier = Modifier.weight(1f).height(56.dp),
+                enabled = isConnected,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE53935),
+                    disabledContainerColor = Color(0xFFE53935).copy(alpha = 0.2f)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("진동 OFF\n(O)", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center, lineHeight = 16.sp)
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ── 실시간 위치 추적 ──────────────────────────────
+        SectionLabel("실시간 위치 추적")
+        Button(
+            onClick = { onTrackingToggle(!isTracking) },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isTracking) Color(0xFF1565C0) else Color(0xFF0D47A1),
+                disabledContainerColor = Color(0xFF0D47A1).copy(alpha = 0.3f)
+            ),
+            shape = RoundedCornerShape(10.dp)
+        ) {
             Text(
-                text = "진동 명령",
-                fontSize = 13.sp,
-                color = Color(0xFF90A4AE),
-                modifier = Modifier.fillMaxWidth()
+                text = if (isTracking) "위치 추적 중... (탭하여 중지)" else "위치 추적 시작",
+                fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite
             )
-            Spacer(Modifier.height(8.dp))
+        }
 
-            val isConnected = connState == BleNusManager.ConnectionState.CONNECTED
+        Spacer(Modifier.height(20.dp))
 
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CmdButton("LEFT\n(L)", Color(0xFFFF6B6B), Modifier.weight(1f), isConnected) {
-                    bleManager.sendCommand("L")
-                }
-                CmdButton("RIGHT\n(R)", Color(0xFF6BAAFF), Modifier.weight(1f), isConnected) {
-                    bleManager.sendCommand("R")
-                }
-                CmdButton("BOTH\n(B)", Color(0xFFFFD700), Modifier.weight(1f), isConnected) {
-                    bleManager.sendCommand("B")
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CmdButton("OFF\n(O)", Color(0xFF90A4AE), Modifier.weight(1f), isConnected) {
-                    bleManager.sendCommand("O")
-                }
-                CmdButton("PING\n(P)", Color(0xFF80CBC4), Modifier.weight(1f), isConnected) {
-                    bleManager.sendCommand("P")
-                }
-                Spacer(Modifier.weight(1f))
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // ── 임시 테스트 버튼 (G=진동ON / O=진동OFF) ───────
+        // ── 위험구간 신고 ──────────────────────────────────
+        SectionLabel("위험구간 신고")
+        Button(
+            onClick = onReport,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            enabled = !isReporting,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFE65100),
+                disabledContainerColor = Color(0xFFE65100).copy(alpha = 0.3f)
+            ),
+            shape = RoundedCornerShape(10.dp)
+        ) {
             Text(
-                text = "임시 테스트",
-                fontSize = 13.sp,
-                color = Color(0xFF90A4AE),
-                modifier = Modifier.fillMaxWidth()
+                text = if (isReporting) "신고 중..." else "현재 위치 위험구간 신고",
+                fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite
             )
-            Spacer(Modifier.height(8.dp))
+        }
 
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = { bleManager.sendCommand("G") },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    enabled = isConnected,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF43A047),
-                        disabledContainerColor = Color(0xFF43A047).copy(alpha = 0.2f)
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("진동 ON\n(G)", fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center, lineHeight = 16.sp)
-                }
-                Button(
-                    onClick = { bleManager.sendCommand("O") },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    enabled = isConnected,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE53935),
-                        disabledContainerColor = Color(0xFFE53935).copy(alpha = 0.2f)
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("진동 OFF\n(O)", fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center, lineHeight = 16.sp)
-                }
-            }
+        Spacer(Modifier.height(20.dp))
 
-            Spacer(Modifier.height(20.dp))
+        // ── AI 위험 감지 ───────────────────────────────────
+        Button(
+            onClick = onOpenHazardCam,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("AI 위험 감지 시작 (카메라)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+        }
 
-            // ── 로그 영역 ────────────────────────────────────
+        Spacer(Modifier.height(12.dp))
+
+        // ── 저장된 기기 삭제 ───────────────────────────────
+        OutlinedButton(
+            onClick = { bleManager.clearSavedDeviceId() },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF78909C))
+        ) { Text("저장된 기기 삭제") }
+
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun LogTab(
+    logHistory: List<String>,
+    scrollState: androidx.compose.foundation.ScrollState
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = "로그",
-                fontSize = 13.sp,
-                color = Color(0xFF90A4AE),
-                modifier = Modifier.fillMaxWidth()
+                text = "${logHistory.size}개의 로그",
+                fontSize = 12.sp,
+                color = Color(0xFF90A4AE)
             )
-            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "최대 30줄",
+                fontSize = 12.sp,
+                color = Color(0xFF546E7A)
+            )
+        }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(Color(0xFF0D0D1A), RoundedCornerShape(8.dp))
-                    .padding(10.dp)
-            ) {
-                Column(
-                    modifier = Modifier.verticalScroll(scrollState)
-                ) {
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0D0D1A), RoundedCornerShape(8.dp))
+                .padding(10.dp)
+        ) {
+            if (logHistory.isEmpty()) {
+                Text(
+                    text = "로그가 없습니다.",
+                    color = Color(0xFF546E7A),
+                    fontSize = 13.sp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                Column(modifier = Modifier.verticalScroll(scrollState)) {
                     logHistory.forEach { line ->
                         Text(
                             text = "> $line",
@@ -311,209 +511,26 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
                     }
                 }
             }
-
-            Spacer(Modifier.height(12.dp))
-
-            // ── 실시간 위치 추적 ──────────────────────────────
-            Text(
-                text = "실시간 위치 추적",
-                fontSize = 13.sp,
-                color = Color(0xFF90A4AE),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    if (isTracking) {
-                        // ── 추적 중지 ──
-                        trackingJob?.cancel()
-                        trackingJob = null
-                        isTracking = false
-                        // GPS listener 해제
-                        locationListener?.let { listener ->
-                            runCatching {
-                                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                                lm?.removeUpdates(listener)
-                            }
-                        }
-                        locationListener = null
-                        lastLocation = null
-                        logHistory.add("위치 추적 중지")
-                        scope.launch {
-                            val result = LocationApiService.sendStop(deviceId)
-                            logHistory.add(if (result.isSuccess) "중지 전송 완료 (deviceId=$deviceId)" else "중지 전송 실패: ${result.exceptionOrNull()?.message}")
-                        }
-                    } else {
-                        // ── 추적 시작 ──
-                        // 권한 체크
-                        val fineGranted = ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.ACCESS_FINE_LOCATION
-                        ) == PackageManager.PERMISSION_GRANTED
-                        val coarseGranted = ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.ACCESS_COARSE_LOCATION
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (!fineGranted && !coarseGranted) {
-                            logHistory.add("위치 권한 필요 - 설정에서 허용 후 다시 시도")
-                            return@Button
-                        }
-
-                        isTracking = true
-                        logHistory.add("위치 추적 시작 (실시간 GPS, 3초 간격)")
-
-                        // GPS 실시간 listener 등록
-                        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                        if (lm == null) {
-                            logHistory.add("LocationManager 사용 불가")
-                            isTracking = false
-                            return@Button
-                        }
-
-                        val listener = object : LocationListener {
-                            override fun onLocationChanged(location: Location) {
-                                lastLocation = Pair(location.latitude, location.longitude)
-                            }
-                            // 하위 API 호환
-                            override fun onProviderEnabled(provider: String) {}
-                            override fun onProviderDisabled(provider: String) {}
-                            @Suppress("DEPRECATION")
-                            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
-                        }
-                        locationListener = listener
-
-                        // 사용 가능한 모든 provider에 등록 (GPS, NETWORK)
-                        val providers = runCatching { lm.getProviders(true) }.getOrDefault(emptyList())
-                        if (providers.isEmpty()) {
-                            logHistory.add("활성화된 위치 provider 없음 - 위치 서비스 ON 확인")
-                            isTracking = false
-                            locationListener = null
-                            return@Button
-                        }
-                        runCatching {
-                            providers.forEach { provider ->
-                                @SuppressLint("MissingPermission")
-                                lm.requestLocationUpdates(provider, 1000L, 1f, listener, Looper.getMainLooper())
-                            }
-                        }.onFailure {
-                            logHistory.add("GPS listener 등록 실패: ${it.message}")
-                        }
-
-                        // 초기 fallback: 즉시 캐시된 위치라도 채워둠
-                        lastLocation = getLastKnownLocation(context)
-
-                        trackingJob = scope.launch {
-                            while (true) {
-                                val loc = lastLocation
-                                if (loc != null) {
-                                    val result = LocationApiService.sendLocation(deviceId, loc.first, loc.second)
-                                    val ok = result.isSuccess
-                                    logHistory.add(if (ok) "위치 전송 lat=${loc.first}, lng=${loc.second}" else "전송 실패: ${result.exceptionOrNull()?.message}")
-                                } else {
-                                    logHistory.add("GPS null - 위치 수신 대기 중")
-                                }
-                                if (logHistory.size > 30) logHistory.removeAt(0)
-                                delay(3000)
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isTracking) Color(0xFF1565C0) else Color(0xFF0D47A1),
-                    disabledContainerColor = Color(0xFF0D47A1).copy(alpha = 0.3f)
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(
-                    text = if (isTracking) "위치 추적 중... (탭하여 중지)" else "위치 추적 시작",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AppWhite
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // ── 위험구간 신고 ────────────────────────────────
-            Text(
-                text = "위험구간 신고",
-                fontSize = 13.sp,
-                color = Color(0xFF90A4AE),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    scope.launch {
-                        isReporting = true
-                        val loc = getLastKnownLocation(context)
-                        if (loc == null) {
-                            logHistory.add("GPS 위치를 가져올 수 없습니다. 위치 권한을 확인하세요.")
-                        } else {
-                            logHistory.add("신고 중... lat=${loc.first}, lng=${loc.second}")
-                            val result = HazardApiService.reportHazard(
-                                lat = loc.first,
-                                lng = loc.second
-                            )
-                            logHistory.add(if (result.success) "[성공] ${result.message}" else "[실패] ${result.message}")
-                        }
-                        if (logHistory.size > 30) logHistory.removeAt(0)
-                        isReporting = false
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                enabled = !isReporting,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFE65100),
-                    disabledContainerColor = Color(0xFFE65100).copy(alpha = 0.3f)
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(
-                    text = if (isReporting) "신고 중..." else "현재 위치 위험구간 신고",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AppWhite
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // ── AI 위험 감지 화면 진입 ───────────────────────
-            Button(
-                onClick = onOpenHazardCam,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(
-                    text = "AI 위험 감지 시작 (카메라)",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AppWhite
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // 저장된 기기 삭제
-            OutlinedButton(
-                onClick = { bleManager.clearSavedDeviceId() },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF78909C))
-            ) {
-                Text("저장된 기기 삭제")
-            }
         }
     }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        fontSize = 13.sp,
+        color = Color(0xFF90A4AE),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+    )
 }
 
 @SuppressLint("MissingPermission")
 private fun getLastKnownLocation(context: Context): Pair<Double, Double>? {
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
     val providers = runCatching { lm.getProviders(true) }.getOrDefault(emptyList())
-    // accuracy는 미터 단위 (작을수록 정확) → minByOrNull
     val location = providers
         .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
         .minByOrNull { it.accuracy }
