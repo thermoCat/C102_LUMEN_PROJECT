@@ -450,6 +450,24 @@ private fun ControlTab(
 
         Spacer(Modifier.height(12.dp))
 
+        // ── 안전보행 테스트 (Lumen2) ──────────────────────
+        Button(
+            onClick = {
+                val intent = android.content.Intent(
+                    context,
+                    com.ssafy.smartcane.lumen2.SafetyWalkActivity::class.java
+                )
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("안전보행 테스트", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+        }
+
+        Spacer(Modifier.height(12.dp))
+
         // ── 저장된 기기 삭제 ───────────────────────────────
         OutlinedButton(
             onClick = { bleManager.clearSavedDeviceId() },
