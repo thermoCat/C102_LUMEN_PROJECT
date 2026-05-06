@@ -103,7 +103,6 @@ import com.ssafy.smartcane.ui.theme.NavDivider
 import com.ssafy.smartcane.ui.theme.NavGray
 import com.ssafy.smartcane.ui.theme.NavLightGray
 import com.ssafy.smartcane.ui.theme.NavYellow
-import kotlin.random.Random
 
 private enum class SearchSub { Main, VoiceReady, VoiceListening, Results }
 private const val NEARBY_SEARCH_TAG = "NearbySearch"
@@ -130,7 +129,8 @@ private fun SpeechRecognizerEffect(
     startToken: Int,
     onReady: () -> Unit,
     onResult: (String) -> Unit,
-    onError: (Int) -> Unit
+    onError: (Int) -> Unit,
+    onRmsChanged: (Float) -> Unit
 ) {
     val context = LocalContext.current
     val recognizer = remember {
@@ -143,6 +143,7 @@ private fun SpeechRecognizerEffect(
     val onReadyState = rememberUpdatedState(onReady)
     val onResultState = rememberUpdatedState(onResult)
     val onErrorState = rememberUpdatedState(onError)
+    val onRmsChangedState = rememberUpdatedState(onRmsChanged)
 
     DisposableEffect(recognizer) {
         if (recognizer == null) {
@@ -176,7 +177,9 @@ private fun SpeechRecognizerEffect(
             override fun onEndOfSpeech() = Unit
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
             override fun onPartialResults(partialResults: Bundle?) = Unit
-            override fun onRmsChanged(rmsdB: Float) = Unit
+            override fun onRmsChanged(rmsdB: Float) {
+                onRmsChangedState.value(rmsdB)
+            }
         }
 
         recognizer.setRecognitionListener(listener)
@@ -211,12 +214,14 @@ fun SearchScreen(
     val kakaoLocalSearchService = remember { KakaoLocalSearchService() }
     var sub by remember { mutableStateOf(SearchSub.Main) }
     var query by remember { mutableStateOf("") }
+    var queryFromVoice by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf(emptyList<SearchResult>()) }
     var nearbyPlaces by remember { mutableStateOf(emptyList<KakaoPlace>()) }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
-    var lastNearbySearchLocation by remember { mutableStateOf<Location?>(null) }
+    var hasRequestedNearbySearch by remember { mutableStateOf(false) }
     var voiceStartToken by remember { mutableStateOf(0) }
     var pendingVoiceStart by remember { mutableStateOf(false) }
+    var voiceRmsDb by remember { mutableStateOf(0f) }
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -242,6 +247,7 @@ fun SearchScreen(
             ?.trim()
         if (result.resultCode == Activity.RESULT_OK && !spokenText.isNullOrEmpty()) {
             query = spokenText
+            queryFromVoice = true
             sub = SearchSub.Results
         } else {
             sub = SearchSub.Main
@@ -311,10 +317,10 @@ fun SearchScreen(
         onLocation = { currentLocation = it }
     )
 
-    LaunchedEffect(currentLocation) {
+    LaunchedEffect(currentLocation != null) {
+        if (hasRequestedNearbySearch) return@LaunchedEffect
         val location = currentLocation ?: return@LaunchedEffect
-        val previous = lastNearbySearchLocation
-        if (previous != null && previous.distanceTo(location) < 50f) return@LaunchedEffect
+        hasRequestedNearbySearch = true
 
         Log.d(
             NEARBY_SEARCH_TAG,
@@ -325,14 +331,13 @@ fun SearchScreen(
             latitude = location.latitude
         )
         Log.d(NEARBY_SEARCH_TAG, "nearby result count=${nearbyPlaces.size}")
-        lastNearbySearchLocation = location
     }
 
     LaunchedEffect(sub, query) {
         if (sub != SearchSub.Results) return@LaunchedEffect
 
         val keyword = query.trim()
-        if (keyword.length < 2) {
+        if (keyword.length < 2 && !queryFromVoice) {
             results = emptyList()
             return@LaunchedEffect
         }
@@ -363,15 +368,21 @@ fun SearchScreen(
         onReady = { sub = SearchSub.VoiceListening },
         onResult = { spokenText ->
             query = spokenText
+            queryFromVoice = true
             sub = SearchSub.Results
         },
-        onError = { sub = SearchSub.Main }
+        onError = {
+            voiceRmsDb = 0f
+            sub = SearchSub.Main
+        },
+        onRmsChanged = { rmsDb -> voiceRmsDb = rmsDb }
     )
 
     when (sub) {
         SearchSub.VoiceReady,
         SearchSub.VoiceListening -> VoiceOverlay(
             listening = sub == SearchSub.VoiceListening,
+            rmsDb = voiceRmsDb,
             onCancel = { sub = SearchSub.Main },
             onTabChange = {
                 sub = SearchSub.Main
@@ -387,10 +398,14 @@ fun SearchScreen(
             nearbyPlaces = nearbyPlaces,
             onOpenSearch = { sub = SearchSub.Results },
             onVoice = ::startVoiceRecognition,
-            onQueryChange = { query = it },
+            onQueryChange = {
+                queryFromVoice = false
+                query = it
+            },
             onCancel = {
                 sub = SearchSub.Main
                 query = ""
+                queryFromVoice = false
             },
             onSelect = { result ->
                 onDestinationSelected(result.toRouteDestination())
@@ -404,6 +419,7 @@ fun SearchScreen(
             onTabChange = {
                 sub = SearchSub.Main
                 query = ""
+                queryFromVoice = false
                 if (it != NavTab.Search) onTabChange(it)
             }
         )
@@ -671,63 +687,67 @@ private fun SearchBrowseView(
                     modifier = Modifier
                         .padding(horizontal = 0.dp)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    results.forEach { result ->
-                        Column(
+                    results.forEachIndexed { index, result ->
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(0.5.dp, NavDivider, RoundedCornerShape(12.dp))
                                 .clickable(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
                                 ) { onSelect(result) }
+                                .padding(horizontal = 40.dp)
+                                .padding(top = if (index == 0) 7.dp else 14.dp, bottom = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .weight(1f)
                             ) {
                                 Text(
-                                    text = result.name,
-                                    color = AppWhite,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.SemiBold,
+                                    text = result.addr,
+                                    color = NavGray,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Normal,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) { onToggleStar(result.id) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painter = painterResource(
-                                            if (result.starred) R.drawable.ic_star_filled else R.drawable.ic_star_outline
-                                        ),
-                                        contentDescription = null,
-                                        tint = NavYellow,
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = result.name.take(12),
+                                    color = AppWhite,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
-                            HorizontalDivider(color = NavDivider, thickness = 0.5.dp)
-                            Text(
-                                text = result.addr,
-                                color = NavLightGray,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
+                            Spacer(Modifier.width(14.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { onToggleStar(result.id) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(
+                                        if (result.starred) R.drawable.ic_star_filled else R.drawable.ic_star_outline
+                                    ),
+                                    contentDescription = null,
+                                    tint = NavYellow,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
                         }
+                        HorizontalDivider(
+                            color = NavDivider,
+                            thickness = 0.5.dp,
+                            modifier = Modifier.padding(horizontal = 30.dp)
+                        )
                     }
                 }
             } else {
@@ -1140,10 +1160,15 @@ private fun NearbyRecommendationRow(
 @Composable
 private fun VoiceOverlay(
     listening: Boolean,
+    rmsDb: Float,
     onCancel: () -> Unit,
     onTabChange: (NavTab) -> Unit
 ) {
-    var audioLevel by remember { mutableStateOf(0f) }
+    val audioLevel by animateFloatAsState(
+        targetValue = if (listening) ((rmsDb + 2f) / 12f).coerceIn(0f, 1f) else 0f,
+        animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing),
+        label = "voiceAudioLevel"
+    )
     val wave1Alpha by animateFloatAsState(
         targetValue = if (!listening || audioLevel < 0.2f) 0f else 0.3f,
         animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
@@ -1156,18 +1181,6 @@ private fun VoiceOverlay(
         targetValue = if (!listening || audioLevel < 0.6f) 0f else 0.1f,
         animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
     )
-
-    LaunchedEffect(listening) {
-        if (!listening) {
-            audioLevel = 0f
-            return@LaunchedEffect
-        }
-
-        while (true) {
-            audioLevel = Random.nextFloat()
-            kotlinx.coroutines.delay(Random.nextLong(140L, 320L))
-        }
-    }
 
     Column(
         modifier = Modifier

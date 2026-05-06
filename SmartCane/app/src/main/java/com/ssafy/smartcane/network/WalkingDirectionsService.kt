@@ -74,6 +74,7 @@ class WalkingDirectionsService(
                 .get()
                 .build()
 
+            Log.d(TAG, "Request walking route origin=$originLongitude,$originLatitude destination=$destinationLongitude,$destinationLatitude priority=DISTANCE")
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {

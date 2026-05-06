@@ -9,15 +9,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ssafy.smartcane.ui.theme.NavDivider
 import com.ssafy.smartcane.ui.theme.NavYellow
+
+val LocalNavButtonCornerRadius = compositionLocalOf { 30.dp }
 
 @Composable
 fun NavBtn(
@@ -25,10 +29,11 @@ fun NavBtn(
     filled: Boolean = false,
     outlined: Boolean = false,
     big: Boolean = false,
+    cornerRadius: Dp? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(30.dp)
+    val shape = RoundedCornerShape(cornerRadius ?: LocalNavButtonCornerRadius.current)
     val bgColor = if (filled) NavYellow else Color.Transparent
     val textColor = if (filled) Color(0xFF151515) else NavYellow
     val fontSize = if (big) 24.sp else 17.sp

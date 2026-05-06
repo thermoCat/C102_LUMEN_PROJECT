@@ -10,6 +10,14 @@ import android.location.LocationManager
 import android.os.Bundle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -36,6 +44,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +67,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kakao.vectormap.KakaoMap
 import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
@@ -87,6 +99,7 @@ import com.ssafy.smartcane.network.formatDistance
 import com.ssafy.smartcane.network.formatDuration
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
+import com.ssafy.smartcane.ui.component.LocalNavButtonCornerRadius
 import com.ssafy.smartcane.ui.component.NavBtn
 import com.ssafy.smartcane.ui.theme.AppWhite
 import com.ssafy.smartcane.ui.theme.NavBg
@@ -113,11 +126,10 @@ fun RouteScreen(
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var resolvedOriginName by remember { mutableStateOf(originName) }
     var routePlan by remember { mutableStateOf<WalkingRoutePlan?>(null) }
-    var routeOriginLocation by remember { mutableStateOf<Location?>(null) }
-    var routeDestinationKey by remember { mutableStateOf<String?>(null) }
     var isRouteLoading by remember { mutableStateOf(false) }
     var routeMessage by remember { mutableStateOf("") }
     var hasLocationPermission by remember { mutableStateOf(hasLocationPermission(context)) }
+    val hasRouteOrigin = currentLocation != null
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -134,20 +146,10 @@ fun RouteScreen(
         onLocation = { currentLocation = it.asKoreaRouteOrigin() }
     )
 
-    LaunchedEffect(currentLocation, destination?.longitude, destination?.latitude) {
+    LaunchedEffect(hasRouteOrigin, destination?.longitude, destination?.latitude) {
         val origin = currentLocation ?: return@LaunchedEffect
         val destLongitude = destination?.longitude ?: return@LaunchedEffect
         val destLatitude = destination.latitude ?: return@LaunchedEffect
-        val destinationKey = "$destLongitude,$destLatitude"
-        val previousOrigin = routeOriginLocation
-        if (
-            routePlan != null &&
-            previousOrigin != null &&
-            routeDestinationKey == destinationKey &&
-            previousOrigin.distanceTo(origin) < 25f
-        ) {
-            return@LaunchedEffect
-        }
 
         if (resolvedOriginName.isBlank()) {
             resolvedOriginName = localSearchService.getAddressName(origin.longitude, origin.latitude)
@@ -164,9 +166,6 @@ fun RouteScreen(
         )
         if (routePlan == null) {
             routeMessage = "\uacbd\ub85c\ub97c \uac00\uc838\uc624\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. API \ud0a4, \uc81c\ud734 \uad8c\ud55c, \ucd9c\ubc1c/\ubaa9\uc801\uc9c0 \uc88c\ud45c\ub97c \ud655\uc778\ud574\uc8fc\uc138\uc694."
-        } else {
-            routeOriginLocation = origin
-            routeDestinationKey = destinationKey
         }
         isRouteLoading = false
     }
@@ -194,6 +193,7 @@ fun RouteScreen(
         )
 
         RouteSub.Simple -> ExampleRouteGuideView(
+            originName = resolvedOriginName,
             destName = destName,
             routePlan = routePlan,
             onDone = { sub = RouteSub.Main },
@@ -204,6 +204,7 @@ fun RouteScreen(
         )
 
         RouteSub.Navigation -> MapNavView(
+            originName = resolvedOriginName,
             destName = destName,
             currentLocation = currentLocation,
             destination = destination,
@@ -289,7 +290,7 @@ private fun RouteMainView(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, NavDivider, RoundedCornerShape(14.dp))
+                        .border(1.dp, NavDivider, RoundedCornerShape(12.dp))
                 ) {
                     RouteInfoRow("출발지", originName)
                     HorizontalDivider(color = NavDivider, thickness = 1.dp)
@@ -298,10 +299,12 @@ private fun RouteMainView(
                     RouteInfoRow("예상시간", estimatedTime)
                 }
                 Spacer(Modifier.height(20.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                CompositionLocalProvider(LocalNavButtonCornerRadius provides 30.dp) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     NavBtn("길 안내 및 안전 보행 시작", filled = true, big = true, onClick = onNavigation)
                     NavBtn("간편 경로 안내", outlined = true, big = true, onClick = onSimple)
                     NavBtn("즐겨찾기에서 선택", outlined = true, big = true, onClick = onFav)
+                    }
                 }
             }
         }
@@ -339,6 +342,7 @@ private fun RouteInfoRow(label: String, value: String) {
 
 @Composable
 private fun ExampleRouteGuideView(
+    originName: String,
     destName: String,
     routePlan: WalkingRoutePlan?,
     onDone: () -> Unit,
@@ -383,7 +387,7 @@ private fun ExampleRouteGuideView(
                     .padding(10.dp)
             ) {
                 item {
-                    StartRouteRow()
+                    StartRouteRow(originName = originName)
                 }
                 items(routePlan.instructions) { item ->
                     ExampleRouteGuideRow(item = item)
@@ -397,11 +401,11 @@ private fun ExampleRouteGuideView(
 }
 
 @Composable
-private fun StartRouteRow() {
+private fun StartRouteRow(originName: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(111.dp)
+            .height(168.dp)
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -410,6 +414,14 @@ private fun StartRouteRow() {
             contentDescription = null,
             tint = NavRed,
             modifier = Modifier.size(width = 55.dp, height = 65.dp)
+        )
+        Spacer(Modifier.width(28.dp))
+        RouteGuideTextColumn(
+            title = originName.ifBlank { "\ucd9c\ubc1c\uc9c0" },
+            distanceText = null,
+            reserveDistanceSlot = false,
+            maxTitleLines = 2,
+            modifier = Modifier.weight(1f)
         )
     }
     HorizontalDivider(
@@ -435,25 +447,12 @@ private fun ExampleRouteGuideRow(item: RouteInstruction) {
             modifier = Modifier.size(width = 59.dp, height = 69.dp)
         )
         Spacer(Modifier.width(28.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = formatDistance(item.distanceMeters),
-                color = AppWhite,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = item.title,
-                color = AppWhite,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = 30.sp,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        RouteGuideTextColumn(
+            title = item.title,
+            distanceText = formatDistance(item.distanceMeters),
+            maxTitleLines = 3,
+            modifier = Modifier.weight(1f)
+        )
     }
     HorizontalDivider(
         color = NavYellow,
@@ -467,7 +466,7 @@ private fun ExampleDestinationRow(destName: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(129.dp)
+            .height(168.dp)
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -478,13 +477,11 @@ private fun ExampleDestinationRow(destName: String) {
             modifier = Modifier.size(width = 55.dp, height = 65.dp)
         )
         Spacer(Modifier.width(28.dp))
-        Text(
-            text = destName.ifBlank { "\ub3c4\ucc29\uc9c0" },
-            color = AppWhite,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        RouteGuideTextColumn(
+            title = destName.ifBlank { "\ub3c4\ucc29\uc9c0" },
+            distanceText = null,
+            reserveDistanceSlot = false,
+            maxTitleLines = 2,
             modifier = Modifier.weight(1f)
         )
     }
@@ -493,6 +490,37 @@ private fun ExampleDestinationRow(destName: String) {
         thickness = 0.8.dp,
         modifier = Modifier.padding(horizontal = 24.dp)
     )
+}
+
+@Composable
+private fun RouteGuideTextColumn(
+    title: String,
+    distanceText: String?,
+    reserveDistanceSlot: Boolean = distanceText != null,
+    maxTitleLines: Int,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        if (reserveDistanceSlot) {
+            Text(
+                text = distanceText ?: "0m",
+                color = if (distanceText == null) Color.Transparent else AppWhite,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+        Text(
+            text = title,
+            color = AppWhite,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Medium,
+            lineHeight = 30.sp,
+            maxLines = maxTitleLines,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -701,6 +729,7 @@ private fun DestinationGuideRow(destName: String) {
 
 @Composable
 private fun MapNavView(
+    originName: String,
     destName: String,
     currentLocation: Location?,
     destination: RouteDestination?,
@@ -711,8 +740,8 @@ private fun MapNavView(
 ) {
     var currentFocusRequest by remember { mutableStateOf(0) }
     var currentStepIndex by remember(routePlan) { mutableStateOf(0) }
-    val routeSteps = remember(routePlan, destName) {
-        routePlan.toNavigationSteps(destName)
+    val routeSteps = remember(routePlan, originName, destName) {
+        routePlan.toNavigationSteps(originName, destName)
     }
 
     Column(
@@ -720,21 +749,26 @@ private fun MapNavView(
             .fillMaxSize()
             .background(NavBg)
     ) {
-        NavigationRouteHeader(
-            destName = destName,
-            steps = routeSteps,
-            currentStepIndex = currentStepIndex,
-            onStepChange = { currentStepIndex = it }
-        )
-        RouteMapView(
-            currentLocation = currentLocation,
-            destination = destination,
-            routePoints = routePlan?.points.orEmpty(),
-            currentFocusRequest = currentFocusRequest,
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-        )
+        ) {
+            RouteMapView(
+                currentLocation = currentLocation,
+                destination = destination,
+                routePoints = routePlan?.points.orEmpty(),
+                currentFocusRequest = currentFocusRequest,
+                modifier = Modifier.fillMaxSize()
+            )
+            NavigationRouteHeader(
+                destName = destName,
+                steps = routeSteps,
+                currentStepIndex = currentStepIndex,
+                onStepChange = { currentStepIndex = it },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -794,19 +828,20 @@ private fun NavigationRouteHeader(
     destName: String,
     steps: List<NavigationStep>,
     currentStepIndex: Int,
-    onStepChange: (Int) -> Unit
+    onStepChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val safeSteps = steps.ifEmpty {
         listOf(NavigationStep(title = destName, subtitle = "\uacbd\ub85c \ubd88\ub7ec\uc624\ub294 \uc911"))
     }
-    val step = safeSteps[currentStepIndex.coerceIn(0, safeSteps.lastIndex)]
+    val safeStepIndex = currentStepIndex.coerceIn(0, safeSteps.lastIndex)
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(181.dp)
+            .height(185.dp)
             .background(NavBg)
-            .padding(start = 42.dp, top = 54.dp, end = 28.dp)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
             .pointerInput(safeSteps, currentStepIndex) {
                 var dragAmount = 0f
                 detectHorizontalDragGestures(
@@ -823,85 +858,123 @@ private fun NavigationRouteHeader(
                 )
             }
     ) {
+        AnimatedContent(
+            targetState = safeStepIndex,
+            transitionSpec = {
+                val direction = if (targetState > initialState) 1 else -1
+                (
+                    slideInHorizontally(animationSpec = tween(durationMillis = 260)) { width ->
+                        direction * width
+                    } + fadeIn(animationSpec = tween(durationMillis = 160))
+                    ).togetherWith(
+                    slideOutHorizontally(animationSpec = tween(durationMillis = 260)) { width ->
+                        -direction * width
+                    } + fadeOut(animationSpec = tween(durationMillis = 160))
+                ).using(SizeTransform(clip = false))
+            },
+            label = "NavigationStepSlide"
+        ) { stepIndex ->
+            NavigationStepCard(step = safeSteps[stepIndex])
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_route_destination),
-                contentDescription = null,
-                tint = Color.Unspecified,
-                modifier = Modifier.size(width = 36.dp, height = 50.dp)
-            )
-            Spacer(Modifier.width(42.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = step.title,
-                    color = AppWhite,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (step.subtitle.isNotBlank()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        text = step.subtitle,
-                        color = NavLightGray,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-        Row(
-            modifier = Modifier.padding(start = 43.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             safeSteps.forEachIndexed { index, _ ->
                 Box(
                     modifier = Modifier
-                        .size(if (index == 0) 8.dp else 7.dp)
+                        .size(if (index == currentStepIndex) 8.dp else 7.dp)
                         .background(
                             color = if (index == currentStepIndex) AppWhite else Color(0xFF5E5E5E),
                             shape = CircleShape
                         )
                 )
+                if (index != safeSteps.lastIndex) {
+                    Spacer(Modifier.width(12.dp))
+                }
             }
         }
     }
 }
 
+@Composable
+private fun NavigationStepCard(step: NavigationStep) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(148.dp)
+            .padding(horizontal = 28.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(step.cue.routeIconRes()),
+            contentDescription = null,
+            tint = when (step.cue) {
+                DirectionCue.START -> NavRed
+                DirectionCue.DESTINATION -> NavGreen
+                else -> Color.Unspecified
+            },
+            modifier = Modifier.size(
+                width = if (step.cue == DirectionCue.START || step.cue == DirectionCue.DESTINATION) 55.dp else 59.dp,
+                height = if (step.cue == DirectionCue.START || step.cue == DirectionCue.DESTINATION) 65.dp else 69.dp
+            )
+        )
+        Spacer(Modifier.width(28.dp))
+        RouteGuideTextColumn(
+            title = step.title,
+            distanceText = if (step.cue == DirectionCue.START || step.cue == DirectionCue.DESTINATION) {
+                null
+            } else {
+                formatDistance(step.distanceMeters)
+            },
+            reserveDistanceSlot = step.cue != DirectionCue.START && step.cue != DirectionCue.DESTINATION,
+            maxTitleLines = if (step.cue == DirectionCue.START || step.cue == DirectionCue.DESTINATION) 2 else 3,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
 private data class NavigationStep(
     val title: String,
-    val subtitle: String = ""
+    val subtitle: String = "",
+    val distanceMeters: Int = 0,
+    val durationSeconds: Int = 0,
+    val cue: DirectionCue = DirectionCue.STRAIGHT
 )
 
-private fun WalkingRoutePlan?.toNavigationSteps(destName: String): List<NavigationStep> {
+private class MapViewHolder {
+    var view: MapView? = null
+}
+
+private fun WalkingRoutePlan?.toNavigationSteps(originName: String, destName: String): List<NavigationStep> {
     if (this == null) return emptyList()
     return buildList {
         add(
             NavigationStep(
-                title = "\ucd9c\ubc1c\uc9c0",
-                subtitle = "\ucd1d ${formatDistance(distanceMeters)} / ${formatDuration(durationSeconds)}"
+                title = originName.ifBlank { "\ucd9c\ubc1c\uc9c0" },
+                subtitle = "\ucd1d ${formatDistance(distanceMeters)} / ${formatDuration(durationSeconds)}",
+                distanceMeters = distanceMeters,
+                durationSeconds = durationSeconds,
+                cue = DirectionCue.START
             )
         )
         instructions.forEach { instruction ->
             add(
                 NavigationStep(
                     title = instruction.title,
-                    subtitle = "${formatDistance(instruction.distanceMeters)} / ${formatDuration(instruction.durationSeconds)}"
+                    subtitle = "${formatDistance(instruction.distanceMeters)} / ${formatDuration(instruction.durationSeconds)}",
+                    distanceMeters = instruction.distanceMeters,
+                    durationSeconds = instruction.durationSeconds,
+                    cue = instruction.cue
                 )
             )
         }
         add(
             NavigationStep(
                 title = destName.ifBlank { "\ub3c4\ucc29\uc9c0" },
-                subtitle = "\ub3c4\ucc29"
+                subtitle = "\ub3c4\ucc29",
+                cue = DirectionCue.DESTINATION
             )
         )
     }
@@ -939,18 +1012,37 @@ private fun RouteMapView(
     var routeLineLayer by remember { mutableStateOf<RouteLineLayer?>(null) }
     var originLabel by remember { mutableStateOf<Label?>(null) }
     var destinationLabel by remember { mutableStateOf<Label?>(null) }
+    val mapViewHolder = remember { MapViewHolder() }
     var mapError by remember { mutableStateOf("") }
     var lastFocusedRouteKey by remember { mutableStateOf("") }
     var lastHandledFocusRequest by remember { mutableStateOf(currentFocusRequest) }
     val latestRoutePoints by rememberUpdatedState(routePoints)
     val latestLocation by rememberUpdatedState(currentLocation)
     val latestDestination by rememberUpdatedState(destination)
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            val view = mapViewHolder.view ?: return@LifecycleEventObserver
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> runCatching { view.resume() }
+                Lifecycle.Event.ON_PAUSE -> runCatching { view.pause() }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapViewHolder.view?.let { view -> runCatching { view.pause() } }
+        }
+    }
 
     Box(modifier = modifier) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 MapView(context).apply {
+                    mapViewHolder.view = this
                     start(
                         object : MapLifeCycleCallback() {
                             override fun onMapDestroy() = Unit
@@ -989,6 +1081,9 @@ private fun RouteMapView(
                                     ?: LatLng.from(35.1595, 126.8526)
                         }
                     )
+                    if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                        post { runCatching { resume() } }
+                    }
                 }
             },
             update = {

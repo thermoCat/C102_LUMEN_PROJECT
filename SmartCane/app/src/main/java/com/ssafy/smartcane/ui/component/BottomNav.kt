@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,7 +40,7 @@ fun BottomNav(
         NavItem(NavTab.Search, "위치 검색", R.drawable.ic_nav_search),
         NavItem(NavTab.Route, "경로 탐색", R.drawable.ic_nav_route),
         NavItem(NavTab.Safety, "안전 보행", R.drawable.ic_nav_safety),
-        NavItem(NavTab.Fav, "즐겨찾기", R.drawable.ic_nav_fav)
+        NavItem(NavTab.Fav, "즐겨 찾기", R.drawable.ic_nav_fav)
     )
 
     Column(
@@ -58,7 +60,7 @@ fun BottomNav(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(top = 4.dp, bottom = 20.dp)
+                        .padding(top = 4.dp, bottom = 24.dp)
                         .clearAndSetSemantics {
                             contentDescription = if (isActive) "메뉴바 ${item.label} 선택됨" else "메뉴바 ${item.label}"
                         }
@@ -74,6 +76,7 @@ fun BottomNav(
                         modifier = Modifier.size(30.dp),
                         tint = if (isActive) NavYellow else AppWhite
                     )
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = item.label,
                         fontSize = 12.sp,
