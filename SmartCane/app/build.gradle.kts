@@ -89,7 +89,7 @@ dependencies {
     implementation(libs.arcore)
     // ML Kit (Lumen2: 한국어 OCR + 객체 감지)
     implementation(libs.mlkit.text.recognition.korean)
-    implementation(libs.mlkit.object.detection)
+    implementation(libs.mlkit.objectDetection)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
