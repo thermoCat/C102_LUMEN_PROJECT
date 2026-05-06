@@ -50,6 +50,10 @@ class BleNusManager(private val context: Context) {
     private val _log = MutableStateFlow("앱 시작")
     val log: StateFlow<String> = _log.asStateFlow()
 
+    // 자동 재연결 허용 여부 (connect() 호출 시 true, disconnect() 호출 시 false)
+    private val _autoConnectEnabled = MutableStateFlow(false)
+    val autoConnectEnabled: StateFlow<Boolean> = _autoConnectEnabled.asStateFlow()
+
     private val bluetoothAdapter =
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
@@ -190,6 +194,7 @@ class BleNusManager(private val context: Context) {
     }
 
     fun connect() {
+        _autoConnectEnabled.value = true
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
         val savedId = getSavedDeviceId()
         if (savedId != null) {
@@ -220,6 +225,7 @@ class BleNusManager(private val context: Context) {
     }
 
     fun disconnect() {
+        _autoConnectEnabled.value = false
         stopScan()
         gatt?.disconnect(); gatt?.close(); gatt = null
         rxCharacteristic = null
