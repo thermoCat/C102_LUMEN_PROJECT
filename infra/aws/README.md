@@ -1,33 +1,55 @@
-# SmartCane AWS 인프라 정리
+# SmartCane AWS Tunnels
 
-이 문서는 현재 구축된 SmartCane AWS/k3s 인프라 구성을 정리한 문서입니다.
+This directory contains tunnel and relay helpers for AWS managed services used by
+the SmartCane backend.
 
-현재 구조:
+## Local developer tunnels
 
-- A 노드: k3s server(control-plane), Jenkins
-- B 노드: k3s agent
-- C 노드: k3s agent
-
-핵심 특징:
-
-- 단일 control-plane + 2 worker 구조
-- 외부 관리형 데이터 계층 사용
-  - PostgreSQL(RDS, PostGIS)
-  - MySQL(RDS)
-  - Redis(ElastiCache)
-  - S3
-
-현재 인프라 상태:
-
-- 멀티노드 k3s 클러스터 구성 완료
-- Jenkins on k3s 운영 중
-- backend CI/CD 자동 배포 완료
-- Traefik ingress 라우팅 정상 동작
-
-참고 스크립트:
+These PowerShell scripts open SSH local-forwards from a developer PC to the
+legacy bastion host:
 
 - `tunnel-postgres.ps1`
 - `tunnel-mysql.ps1`
 - `tunnel-redis.ps1`
 
-위 스크립트는 로컬 PC에서 bastion 또는 중계 호스트를 통해 외부 DB/Redis에 접속할 때 사용하는 보조 도구입니다.
+They are useful for local testing, but Kubernetes pods cannot use a tunnel that
+only exists on a developer laptop.
+
+## Shared relay for k3s workers
+
+In the current infrastructure, only node A can reach PostgreSQL, MySQL, and
+Redis directly. To let backend pods on worker nodes B/C reuse that route, run a
+shared TCP relay on node A and point the backend config at node A's Tailscale IP.
+
+Files for that flow:
+
+- `shared-egress-relays.sh`
+- `shared-egress-relays.service.example`
+
+Default shared relay ports on node A:
+
+- PostgreSQL: `15432`
+- MySQL: `13306`
+- Redis: `16379`
+
+Default node A Tailscale IP used by the backend manifests:
+
+- `100.85.219.60`
+
+## Example rollout
+
+1. Copy `shared-egress-relays.sh` and `shared-egress-relays.service.example` to node A.
+2. Install `socat` on node A.
+3. Start the systemd service.
+4. Apply the backend ConfigMap so pods use node A as the managed-service gateway.
+
+## Important note about S3
+
+This relay setup covers PostgreSQL, MySQL, and Redis only.
+
+If worker nodes also cannot reach S3 directly, upload/download paths may still
+need one of these follow-up options:
+
+- pin S3-using backend workloads to node A
+- add an HTTP/HTTPS proxy on node A
+- introduce a proper egress/NAT path for worker nodes

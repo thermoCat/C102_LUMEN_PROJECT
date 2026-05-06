@@ -1,0 +1,16 @@
+[Unit]
+Description=SmartCane shared egress relays for RDS and Redis
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/smartcane
+ExecStart=/opt/smartcane/shared-egress-relays.sh
+Restart=always
+RestartSec=5
+Environment=LISTEN_HOST=0.0.0.0
+
+[Install]
+WantedBy=multi-user.target

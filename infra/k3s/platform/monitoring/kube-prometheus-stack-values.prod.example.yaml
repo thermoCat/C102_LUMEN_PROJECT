@@ -3,13 +3,21 @@ grafana:
   adminPassword: change-me-grafana-admin-password
   grafana.ini:
     server:
-      root_url: http://k14c102.p.ssafy.io/grafana
+      root_url: https://k14c102.p.ssafy.io/grafana
       serve_from_sub_path: true
   ingress:
     enabled: true
     ingressClassName: traefik
+    # Use a single host-level certificate for monitoring to avoid duplicate
+    # ACME orders on the same host/path-based ingress setup.
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - k14c102.p.ssafy.io
+    tls:
+      - secretName: monitoring-shared-tls
+        hosts:
+          - k14c102.p.ssafy.io
     path: /grafana
     pathType: Prefix
 
@@ -22,7 +30,7 @@ prometheus:
     paths:
       - /prometheus
   prometheusSpec:
-    externalUrl: http://k14c102.p.ssafy.io/prometheus
+    externalUrl: https://k14c102.p.ssafy.io/prometheus
     routePrefix: /prometheus
     retention: 10d
     storageSpec:
@@ -34,6 +42,56 @@ prometheus:
             requests:
               storage: 20Gi
 
+additionalPrometheusRulesMap:
+  smartcane-platform:
+    groups:
+      - name: smartcane.platform
+        rules:
+          - alert: SmartCaneBackendDeploymentReplicasMismatch
+            expr: kube_deployment_spec_replicas{namespace="smartcane",deployment="backend-api"} != kube_deployment_status_replicas_available{namespace="smartcane",deployment="backend-api"}
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: SmartCane backend available replicas do not match the desired count.
+              description: The backend deployment in namespace smartcane has fewer available replicas than expected for at least 5 minutes.
+
+          - alert: SmartCaneBackendPodsRestarting
+            expr: increase(kube_pod_container_status_restarts_total{namespace="smartcane",container="backend-api"}[15m]) > 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: SmartCane backend pods are restarting.
+              description: A backend-api container restarted within the last 15 minutes and kept doing so for at least 10 minutes.
+
+          - alert: SmartCaneWorkerNodeNotReady
+            expr: kube_node_status_condition{condition="Ready",status="true",node=~"ip-172-31-45-62|ip-172-31-36-235"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: A SmartCane worker node is not Ready.
+              description: One of the worker nodes has been NotReady for at least 5 minutes.
+
+          - alert: SmartCaneBackendHighCpu
+            expr: sum(rate(container_cpu_usage_seconds_total{namespace="smartcane",pod=~"backend-api-.*",container="backend-api"}[5m])) / sum(kube_pod_container_resource_limits{namespace="smartcane",pod=~"backend-api-.*",container="backend-api",resource="cpu",unit="core"}) > 0.8
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: SmartCane backend CPU usage is high.
+              description: Combined backend-api CPU usage has exceeded 80 percent of the configured CPU limit for at least 10 minutes.
+
+          - alert: SmartCaneBackendHighMemory
+            expr: sum(container_memory_working_set_bytes{namespace="smartcane",pod=~"backend-api-.*",container="backend-api"}) / sum(kube_pod_container_resource_limits{namespace="smartcane",pod=~"backend-api-.*",container="backend-api",resource="memory",unit="byte"}) > 0.85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: SmartCane backend memory usage is high.
+              description: Combined backend-api memory usage has exceeded 85 percent of the configured memory limit for at least 10 minutes.
+
 alertmanager:
   ingress:
     enabled: true
@@ -43,7 +101,7 @@ alertmanager:
     paths:
       - /alertmanager
   alertmanagerSpec:
-    externalUrl: http://k14c102.p.ssafy.io/alertmanager
+    externalUrl: https://k14c102.p.ssafy.io/alertmanager
     routePrefix: /alertmanager
 
 kubeStateMetrics:
