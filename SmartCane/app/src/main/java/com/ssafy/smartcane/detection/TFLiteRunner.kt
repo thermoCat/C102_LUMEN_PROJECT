@@ -4,21 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.support.common.FileUtil
-import org.tensorflow.lite.support.common.ops.NormalizeOp
-import org.tensorflow.lite.support.image.ImageProcessor
-import org.tensorflow.lite.support.image.TensorImage
-import org.tensorflow.lite.support.image.ops.ResizeOp
-import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.channels.FileChannel
 
-/**
- * 분류 모델 가정.
- *   입력: [1, H, W, 3] (uint8 또는 float32)
- *   출력: [1, N_classes]
- *
- * float32 입력은 0~1 정규화(mean=0, std=255)로 자동 처리.
- * 다른 형태(세그멘테이션/디텍션)면 classify() 부분만 모델에 맞게 교체.
- */
 class TFLiteRunner(
     context: Context,
     modelFileName: String = "model.tflite",
@@ -32,13 +23,19 @@ class TFLiteRunner(
     private val inputDType: DataType
     private val outputShape: IntArray
     private val outputDType: DataType
-    private val processor: ImageProcessor
 
     init {
-        val model = FileUtil.loadMappedFile(context, modelFileName)
+        val afd = context.assets.openFd(modelFileName)
+        val model = afd.createInputStream().channel.map(
+            FileChannel.MapMode.READ_ONLY, afd.startOffset, afd.declaredLength
+        )
         interpreter = Interpreter(model, Interpreter.Options().apply { setNumThreads(2) })
 
-        labels = FileUtil.loadLabels(context, labelsFileName)
+        labels = context.assets.open(labelsFileName).use { stream ->
+            BufferedReader(InputStreamReader(stream)).readLines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }
 
         val inputTensor = interpreter.getInputTensor(0)
         val inShape = inputTensor.shape()
@@ -49,26 +46,56 @@ class TFLiteRunner(
         val outputTensor = interpreter.getOutputTensor(0)
         outputShape = outputTensor.shape()
         outputDType = outputTensor.dataType()
-
-        processor = ImageProcessor.Builder()
-            .add(ResizeOp(inputH, inputW, ResizeOp.ResizeMethod.BILINEAR))
-            .apply {
-                if (inputDType == DataType.FLOAT32) add(NormalizeOp(0f, 255f))
-            }
-            .build()
     }
 
     fun classify(bitmap: Bitmap): Result? {
-        val image = TensorImage(inputDType).apply { load(bitmap) }
-        val processed = processor.process(image)
+        val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true)
+        val inputBuffer = bitmapToByteBuffer(resized)
 
-        val output = TensorBuffer.createFixedSize(outputShape, outputDType)
-        interpreter.run(processed.buffer, output.buffer.rewind())
+        val outputSize = outputShape.fold(1) { acc, dim -> acc * dim }
+        val bytesPerElement = if (outputDType == DataType.FLOAT32) 4 else 1
+        val outputBuffer = ByteBuffer.allocateDirect(outputSize * bytesPerElement).apply {
+            order(ByteOrder.nativeOrder())
+        }
 
-        val probs = output.floatArray
+        interpreter.run(inputBuffer, outputBuffer)
+
+        outputBuffer.rewind()
+        val probs = if (outputDType == DataType.FLOAT32) {
+            FloatArray(outputSize) { outputBuffer.float }
+        } else {
+            FloatArray(outputSize) { (outputBuffer.get().toInt() and 0xFF) / 255f }
+        }
+
         val idx = probs.indices.maxByOrNull { probs[it] } ?: return null
         val label = labels.getOrNull(idx) ?: return null
         return Result(label, probs[idx])
+    }
+
+    private fun bitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
+        val isFloat = inputDType == DataType.FLOAT32
+        val bytesPerPixel = if (isFloat) 4 else 1
+        val buffer = ByteBuffer.allocateDirect(inputH * inputW * 3 * bytesPerPixel).apply {
+            order(ByteOrder.nativeOrder())
+        }
+        val pixels = IntArray(inputH * inputW)
+        bitmap.getPixels(pixels, 0, inputW, 0, 0, inputW, inputH)
+        for (pixel in pixels) {
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+            if (isFloat) {
+                buffer.putFloat(r / 255f)
+                buffer.putFloat(g / 255f)
+                buffer.putFloat(b / 255f)
+            } else {
+                buffer.put(r.toByte())
+                buffer.put(g.toByte())
+                buffer.put(b.toByte())
+            }
+        }
+        buffer.rewind()
+        return buffer
     }
 
     override fun close() {
