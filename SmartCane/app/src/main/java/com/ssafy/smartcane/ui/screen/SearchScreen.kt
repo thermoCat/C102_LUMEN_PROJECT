@@ -697,7 +697,7 @@ private fun SearchBrowseView(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
                                 ) { onSelect(result) }
-                                .padding(horizontal = 40.dp)
+                                .padding(horizontal = 30.dp)
                                 .padding(top = if (index == 0) 7.dp else 14.dp, bottom = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {

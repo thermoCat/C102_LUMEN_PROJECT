@@ -8,6 +8,8 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.util.Log
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -50,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -89,6 +92,10 @@ import com.kakao.vectormap.route.RouteLineStylesSet
 import com.ssafy.smartcane.BuildConfig
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.data.model.RouteDestination
+import com.ssafy.smartcane.navigation.LowPassLocationSmoother
+import com.ssafy.smartcane.navigation.RouteDeviationStatus
+import com.ssafy.smartcane.navigation.RouteMatchResult
+import com.ssafy.smartcane.navigation.RouteNavigationMatcher
 import com.ssafy.smartcane.network.DirectionCue
 import com.ssafy.smartcane.network.KakaoLocalSearchService
 import com.ssafy.smartcane.network.RouteInstruction
@@ -109,9 +116,16 @@ import com.ssafy.smartcane.ui.theme.NavGreen
 import com.ssafy.smartcane.ui.theme.NavLightGray
 import com.ssafy.smartcane.ui.theme.NavRed
 import com.ssafy.smartcane.ui.theme.NavYellow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private enum class RouteSub { Main, Simple, Navigation }
 private const val USE_DUMMY_ROUTE_MAP = false
+private const val ROUTE_TAG = "RouteScreen"
+private const val MAX_LAST_KNOWN_AGE_MS = 5 * 60 * 1000L
+private const val REROUTE_COOLDOWN_MS = 30_000L
 
 @Composable
 fun RouteScreen(
@@ -122,6 +136,8 @@ fun RouteScreen(
     val context = LocalContext.current
     val directionsService = remember { WalkingDirectionsService() }
     val localSearchService = remember { KakaoLocalSearchService() }
+    val locationSmoother = remember(destination?.longitude, destination?.latitude) { LowPassLocationSmoother() }
+    val routeScope = rememberCoroutineScope()
     var sub by remember { mutableStateOf(RouteSub.Main) }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var resolvedOriginName by remember { mutableStateOf(originName) }
@@ -129,7 +145,21 @@ fun RouteScreen(
     var isRouteLoading by remember { mutableStateOf(false) }
     var routeMessage by remember { mutableStateOf("") }
     var hasLocationPermission by remember { mutableStateOf(hasLocationPermission(context)) }
+    var requestedRouteKey by remember(destination?.longitude, destination?.latitude) { mutableStateOf("") }
+    var routeRequestToken by remember(destination?.longitude, destination?.latitude) { mutableStateOf(0) }
+    var handledRouteRequestToken by remember(destination?.longitude, destination?.latitude) { mutableStateOf(-1) }
+    var lastRerouteAt by remember(destination?.longitude, destination?.latitude) { mutableStateOf(0L) }
+    var routeJob by remember(destination?.longitude, destination?.latitude) { mutableStateOf<Job?>(null) }
     val hasRouteOrigin = currentLocation != null
+    val routeMatch = remember(currentLocation, routePlan) {
+        val location = currentLocation
+        val plan = routePlan
+        if (location == null || plan == null) {
+            null
+        } else {
+            RouteNavigationMatcher.match(location, plan.points)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -143,31 +173,92 @@ fun RouteScreen(
 
     CurrentLocationEffect(
         enabled = hasLocationPermission,
-        onLocation = { currentLocation = it.asKoreaRouteOrigin() }
+        onLocation = { location ->
+            Log.d(
+                ROUTE_TAG,
+                "Location update lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, time=${location.time}"
+            )
+            if (location.isUsableRouteOrigin()) {
+                currentLocation = locationSmoother.smooth(location)
+            } else {
+                Log.d(
+                    ROUTE_TAG,
+                    "Ignored non-Korea route origin lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}"
+                )
+            }
+        }
     )
 
-    LaunchedEffect(hasRouteOrigin, destination?.longitude, destination?.latitude) {
-        val origin = currentLocation ?: return@LaunchedEffect
-        val destLongitude = destination?.longitude ?: return@LaunchedEffect
-        val destLatitude = destination.latitude ?: return@LaunchedEffect
+    fun requestWalkingRoute() {
+        val origin = currentLocation ?: return
+        val destLongitude = destination?.longitude ?: return
+        val destLatitude = destination.latitude ?: return
+        val routeKey = origin.routeOriginKey(destLongitude, destLatitude)
+        if (requestedRouteKey.isNotBlank() && handledRouteRequestToken == routeRequestToken) return
+        requestedRouteKey = routeKey
+        handledRouteRequestToken = routeRequestToken
 
-        if (resolvedOriginName.isBlank()) {
-            resolvedOriginName = localSearchService.getAddressName(origin.longitude, origin.latitude)
+        routeJob?.cancel()
+        routeJob = routeScope.launch {
+            Log.d(
+                ROUTE_TAG,
+                "Route request ready origin=${origin.longitude},${origin.latitude} destination=$destLongitude,$destLatitude token=$routeRequestToken"
+            )
+            isRouteLoading = true
+            routeMessage = ""
+            routePlan = null
+            Log.d(ROUTE_TAG, "Calling walking directions")
+            try {
+                val fetchedRoutePlan = withTimeoutOrNull(12_000L) {
+                    directionsService.getWalkingRoute(
+                        originLongitude = origin.longitude,
+                        originLatitude = origin.latitude,
+                        destinationLongitude = destLongitude,
+                        destinationLatitude = destLatitude
+                    )
+                }
+                fetchedRoutePlan?.let { plan ->
+                    Log.d(
+                        ROUTE_TAG,
+                        "Walking route ready key=$routeKey distance=${plan.distanceMeters}m duration=${plan.durationSeconds}s points=${plan.points.size} first=${plan.points.firstOrNull()} last=${plan.points.lastOrNull()}"
+                    )
+                }
+                routePlan = fetchedRoutePlan
+                if (fetchedRoutePlan == null) {
+                    Log.e(ROUTE_TAG, "Walking route plan is null or timed out")
+                    routeMessage = "\uacbd\ub85c\ub97c \uac00\uc838\uc624\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. API \ud0a4, \uc81c\ud734 \uad8c\ud55c, \ucd9c\ubc1c/\ubaa9\uc801\uc9c0 \uc88c\ud45c\ub97c \ud655\uc778\ud574\uc8fc\uc138\uc694."
+                }
+                if (resolvedOriginName.isBlank()) {
+                    resolvedOriginName = "\ud604\uc7ac \uc704\uce58"
+                }
+                Log.d(
+                    ROUTE_TAG,
+                    "Route UI state updated estimated=${fetchedRoutePlan?.durationSeconds}, instructions=${fetchedRoutePlan?.instructions?.size}"
+                )
+            } catch (cancelled: CancellationException) {
+                Log.d(ROUTE_TAG, "Route request coroutine cancelled")
+                throw cancelled
+            } finally {
+                isRouteLoading = false
+            }
         }
+    }
 
-        isRouteLoading = true
-        routeMessage = ""
-        routePlan = null
-        routePlan = directionsService.getWalkingRoute(
-            originLongitude = origin.longitude,
-            originLatitude = origin.latitude,
-            destinationLongitude = destLongitude,
-            destinationLatitude = destLatitude
+    LaunchedEffect(hasRouteOrigin, destination?.longitude, destination?.latitude, routeRequestToken) {
+        requestWalkingRoute()
+    }
+
+    LaunchedEffect(sub, routeMatch?.status, routeMatch?.distanceToRouteMeters) {
+        val match = routeMatch ?: return@LaunchedEffect
+        Log.d(
+            ROUTE_TAG,
+            "Route match status=${match.status} distance=${match.distanceToRouteMeters}m traveled=${match.traveledDistanceMeters}m remaining=${match.remainingDistanceMeters}m"
         )
-        if (routePlan == null) {
-            routeMessage = "\uacbd\ub85c\ub97c \uac00\uc838\uc624\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. API \ud0a4, \uc81c\ud734 \uad8c\ud55c, \ucd9c\ubc1c/\ubaa9\uc801\uc9c0 \uc88c\ud45c\ub97c \ud655\uc778\ud574\uc8fc\uc138\uc694."
-        }
-        isRouteLoading = false
+        if (sub != RouteSub.Navigation || match.status != RouteDeviationStatus.OFF_ROUTE) return@LaunchedEffect
+        val now = System.currentTimeMillis()
+        if (now - lastRerouteAt < REROUTE_COOLDOWN_MS) return@LaunchedEffect
+        lastRerouteAt = now
+        routeRequestToken++
     }
 
     val destName = destination?.name.orEmpty()
@@ -209,6 +300,7 @@ fun RouteScreen(
             currentLocation = currentLocation,
             destination = destination,
             routePlan = routePlan,
+            routeMatch = routeMatch,
             routeMessage = routeMessage,
             onStop = { sub = RouteSub.Main },
             onTabChange = { nextTab ->
@@ -223,21 +315,19 @@ private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-private fun Location.asKoreaRouteOrigin(): Location =
-    if (isInKorea()) {
-        this
-    } else {
-        defaultGwangjuLocation()
-    }
-
 private fun Location.isInKorea(): Boolean =
     latitude in 33.0..39.5 && longitude in 124.0..132.0
 
-private fun defaultGwangjuLocation(): Location =
-    Location("default").apply {
-        latitude = 35.1595
-        longitude = 126.8526
-    }
+private fun Location.isUsableRouteOrigin(): Boolean =
+    isInKorea()
+
+private fun Location.isRecentEnough(): Boolean =
+    time <= 0L || System.currentTimeMillis() - time <= MAX_LAST_KNOWN_AGE_MS
+
+private fun Location.routeOriginKey(destinationLongitude: Double, destinationLatitude: Double): String =
+    "${latitude.roundForRoute()},${longitude.roundForRoute()}:${destinationLatitude.roundForRoute()},${destinationLongitude.roundForRoute()}"
+
+private fun Double.roundForRoute(): String = String.format(Locale.US, "%.6f", this)
 
 @SuppressLint("MissingPermission")
 private fun lastKnownLocation(context: Context): Location? {
@@ -249,7 +339,8 @@ private fun lastKnownLocation(context: Context): Location? {
         .mapNotNull { provider ->
             runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
         }
-        .maxByOrNull { it.time }
+        .filter { it.isRecentEnough() && it.isUsableRouteOrigin() }
+        .minByOrNull { if (it.hasAccuracy()) it.accuracy else Float.MAX_VALUE }
 }
 
 @Composable
@@ -734,6 +825,7 @@ private fun MapNavView(
     currentLocation: Location?,
     destination: RouteDestination?,
     routePlan: WalkingRoutePlan?,
+    routeMatch: RouteMatchResult?,
     routeMessage: String,
     onStop: () -> Unit,
     onTabChange: (NavTab) -> Unit
@@ -758,6 +850,7 @@ private fun MapNavView(
                 currentLocation = currentLocation,
                 destination = destination,
                 routePoints = routePlan?.points.orEmpty(),
+                routeMatch = routeMatch,
                 currentFocusRequest = currentFocusRequest,
                 modifier = Modifier.fillMaxSize()
             )
@@ -985,6 +1078,7 @@ private fun RouteMapView(
     currentLocation: Location?,
     destination: RouteDestination?,
     routePoints: List<RoutePoint>,
+    routeMatch: RouteMatchResult?,
     currentFocusRequest: Int,
     modifier: Modifier = Modifier
 ) {
@@ -1011,14 +1105,17 @@ private fun RouteMapView(
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
     var routeLineLayer by remember { mutableStateOf<RouteLineLayer?>(null) }
     var originLabel by remember { mutableStateOf<Label?>(null) }
+    var currentLabel by remember { mutableStateOf<Label?>(null) }
     var destinationLabel by remember { mutableStateOf<Label?>(null) }
     val mapViewHolder = remember { MapViewHolder() }
     var mapError by remember { mutableStateOf("") }
     var lastFocusedRouteKey by remember { mutableStateOf("") }
+    var lastDrawnRouteKey by remember { mutableStateOf("") }
     var lastHandledFocusRequest by remember { mutableStateOf(currentFocusRequest) }
     val latestRoutePoints by rememberUpdatedState(routePoints)
     val latestLocation by rememberUpdatedState(currentLocation)
     val latestDestination by rememberUpdatedState(destination)
+    val latestRouteMatch by rememberUpdatedState(routeMatch)
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner) {
@@ -1055,12 +1152,23 @@ private fun RouteMapView(
                                 kakaoMap = map
                                 routeLineLayer = map.routeLineManager?.layer
                                 routeLineLayer?.drawRoute(latestRoutePoints)
-                                latestLocation?.let { location ->
+                                lastDrawnRouteKey = latestRoutePoints.routeKey()
+                                latestRoutePoints.firstOrNull()?.toLatLng()?.let { position ->
                                     originLabel = map.addOrMoveLabel(
                                         label = null,
                                         id = "route-origin",
-                                        position = LatLng.from(location.latitude, location.longitude),
+                                        position = position,
                                         iconRes = R.drawable.ic_route_start
+                                    )
+                                }
+                                val displayPosition = latestRouteMatch?.snappedPoint?.toLatLng()
+                                    ?: latestLocation?.let { LatLng.from(it.latitude, it.longitude) }
+                                displayPosition?.let { position ->
+                                    currentLabel = map.addOrMoveLabel(
+                                        label = null,
+                                        id = "route-current",
+                                        position = position,
+                                        iconRes = R.drawable.ic_location_target
                                     )
                                 }
                                 latestDestination?.toLatLngOrNull()?.let { position ->
@@ -1071,7 +1179,7 @@ private fun RouteMapView(
                                         iconRes = R.drawable.ic_route_destination
                                     )
                                 }
-                                map.focusOnRoute(latestLocation, latestDestination, latestRoutePoints)
+                                map.focusOnRoute(latestRouteMatch?.snappedPoint, latestLocation, latestDestination, latestRoutePoints)
                                 lastFocusedRouteKey = latestRoutePoints.routeKey()
                             }
 
@@ -1087,15 +1195,29 @@ private fun RouteMapView(
                 }
             },
             update = {
-                routeLineLayer?.drawRoute(routePoints)
+                val routeKey = routePoints.routeKey()
+                if (routeKey != lastDrawnRouteKey) {
+                    routeLineLayer?.drawRoute(routePoints)
+                    lastDrawnRouteKey = routeKey
+                }
                 val map = kakaoMap
                 if (map != null) {
-                    currentLocation?.let { location ->
+                    routePoints.firstOrNull()?.toLatLng()?.let { position ->
                         originLabel = map.addOrMoveLabel(
                             label = originLabel,
                             id = "route-origin",
-                            position = LatLng.from(location.latitude, location.longitude),
+                            position = position,
                             iconRes = R.drawable.ic_route_start
+                        )
+                    }
+                    val displayPosition = routeMatch?.snappedPoint?.toLatLng()
+                        ?: currentLocation?.let { LatLng.from(it.latitude, it.longitude) }
+                    displayPosition?.let { position ->
+                        currentLabel = map.addOrMoveLabel(
+                            label = currentLabel,
+                            id = "route-current",
+                            position = position,
+                            iconRes = R.drawable.ic_location_target
                         )
                     }
                     destination?.toLatLngOrNull()?.let { position ->
@@ -1106,13 +1228,13 @@ private fun RouteMapView(
                             iconRes = R.drawable.ic_route_destination
                         )
                     }
-                    val routeKey = routePoints.routeKey()
                     if (routeKey.isNotBlank() && routeKey != lastFocusedRouteKey) {
-                        map.focusOnRoute(currentLocation, destination, routePoints)
+                        map.focusOnRoute(routeMatch?.snappedPoint, currentLocation, destination, routePoints)
                         lastFocusedRouteKey = routeKey
                     }
                     if (currentFocusRequest != lastHandledFocusRequest) {
-                        currentLocation?.let { map.focusOnCurrentLocation(it) }
+                        routeMatch?.snappedPoint?.let { map.focusOnCurrentLocation(it) }
+                            ?: currentLocation?.let { map.focusOnCurrentLocation(it) }
                         lastHandledFocusRequest = currentFocusRequest
                     }
                 }
@@ -1211,12 +1333,14 @@ private fun KakaoMap.addOrMoveLabel(
 }
 
 private fun KakaoMap.focusOnRoute(
+    snappedLocation: RoutePoint?,
     currentLocation: Location?,
     destination: RouteDestination?,
     points: List<RoutePoint>
 ) {
     val latLngs = buildList {
-        currentLocation?.let { add(LatLng.from(it.latitude, it.longitude)) }
+        snappedLocation?.let { add(it.toLatLng()) }
+            ?: currentLocation?.let { add(LatLng.from(it.latitude, it.longitude)) }
         addAll(points.map { LatLng.from(it.latitude, it.longitude) })
         destination?.toLatLngOrNull()?.let { add(it) }
     }.distinct()
@@ -1238,23 +1362,34 @@ private fun KakaoMap.focusOnCurrentLocation(location: Location) {
     )
 }
 
+private fun KakaoMap.focusOnCurrentLocation(point: RoutePoint) {
+    moveCamera(
+        CameraUpdateFactory.newCenterPosition(point.toLatLng(), 17),
+        CameraAnimation.from(250)
+    )
+}
+
 private fun RouteDestination.toLatLngOrNull(): LatLng? {
     val lat = latitude ?: return null
     val lng = longitude ?: return null
     return LatLng.from(lat, lng)
 }
 
+private fun RoutePoint.toLatLng(): LatLng = LatLng.from(latitude, longitude)
+
 private fun List<RoutePoint>.routeKey(): String {
     if (isEmpty()) return ""
     val first = first()
+    val middle = this[size / 2]
     val last = last()
-    return "$size:${first.latitude},${first.longitude}:${last.latitude},${last.longitude}"
+    return "$size:${first.latitude},${first.longitude}:${middle.latitude},${middle.longitude}:${last.latitude},${last.longitude}"
 }
 
 private fun RouteLineLayer.drawRoute(points: List<RoutePoint>) {
     removeAll()
-    if (points.size < 2) return
-    val latLngs = points.map { LatLng.from(it.latitude, it.longitude) }
+    val distinctPoints = points.withoutConsecutiveDuplicates()
+    if (distinctPoints.size < 2) return
+    val latLngs = distinctPoints.map { LatLng.from(it.latitude, it.longitude) }
     val style = RouteLineStyle.from(16f, android.graphics.Color.rgb(45, 103, 227))
     val styles = RouteLineStyles.from(style)
     val stylesSet = RouteLineStylesSet.from(styles)
@@ -1262,6 +1397,11 @@ private fun RouteLineLayer.drawRoute(points: List<RoutePoint>) {
     val options = RouteLineOptions.from(segment).setStylesSet(stylesSet)
     addRouteLine(options)
 }
+
+private fun List<RoutePoint>.withoutConsecutiveDuplicates(): List<RoutePoint> =
+    filterIndexed { index, point ->
+        index == 0 || point != this[index - 1]
+    }
 
 private fun DirectionCue.routeIconRes(): Int =
     when (this) {

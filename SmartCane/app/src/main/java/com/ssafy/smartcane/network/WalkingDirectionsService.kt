@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -43,7 +44,11 @@ data class WalkingRoutePlan(
 )
 
 class WalkingDirectionsService(
-    private val client: OkHttpClient = OkHttpClient()
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(10, TimeUnit.SECONDS)
+        .build()
 ) {
     companion object {
         private const val TAG = "WalkingDirections"
@@ -64,25 +69,36 @@ class WalkingDirectionsService(
                 .newBuilder()
                 .addQueryParameter("origin", "$originLongitude,$originLatitude")
                 .addQueryParameter("destination", "$destinationLongitude,$destinationLatitude")
-                .addQueryParameter("priority", "DISTANCE")
+                .addQueryParameter("waypoints", "")
+                .addQueryParameter("radius", "5000")
+                .addQueryParameter("priority", "MAIN_STREET")
                 .addQueryParameter("summary", "false")
                 .build()
 
             val request = Request.Builder()
                 .url(url)
+                .addHeader("accept", "application/json")
                 .addHeader("Authorization", "KakaoAK $apiKey")
+                .addHeader("service", "smartcane")
+                .addHeader("Content-Type", "application/json")
                 .get()
                 .build()
 
-            Log.d(TAG, "Request walking route origin=$originLongitude,$originLatitude destination=$destinationLongitude,$destinationLatitude priority=DISTANCE")
+            Log.d(TAG, "Request walking route origin=$originLongitude,$originLatitude destination=$destinationLongitude,$destinationLatitude priority=MAIN_STREET")
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
+                Log.d(TAG, "Walking directions response: status=${response.code}, bodyLength=${body.length}")
                 if (!response.isSuccessful) {
                     Log.e(TAG, "Walking directions failed: status=${response.code}, body=$body")
                     return@withContext null
                 }
                 if (body.isBlank()) return@withContext null
-                parseWalkingRoute(body)
+                val parsed = parseWalkingRoute(body)
+                Log.d(
+                    TAG,
+                    "Walking directions parsed: distance=${parsed?.distanceMeters}, duration=${parsed?.durationSeconds}, points=${parsed?.points?.size}, instructions=${parsed?.instructions?.size}"
+                )
+                parsed
             }
         }.onFailure {
             Log.e(TAG, "Walking directions request error", it)
@@ -100,12 +116,17 @@ class WalkingDirectionsService(
 
         val summary = route.optJSONObject("summary")
         val sections = route.optJSONArray("sections") ?: JSONArray()
+        Log.d(
+            TAG,
+            "Walking directions parse start: resultCode=$resultCode, sections=${sections.length()}, summaryDistance=${summary?.optInt("distance", 0)}, summaryDuration=${summary?.optInt("duration", 0)}"
+        )
         val points = mutableListOf<RoutePoint>()
         val instructions = mutableListOf<RouteInstruction>()
 
         for (sectionIndex in 0 until sections.length()) {
             val section = sections.optJSONObject(sectionIndex) ?: continue
             val roads = section.optJSONArray("roads") ?: JSONArray()
+            Log.d(TAG, "Walking directions section[$sectionIndex]: roads=${roads.length()}")
             points += parseRoutePoints(roads)
 
             val guideInstructions = parseGuideInstructions(section.optJSONArray("guides") ?: JSONArray())
@@ -117,6 +138,7 @@ class WalkingDirectionsService(
         val totalDuration = summary?.optInt("duration", 0)
             ?: instructions.sumOf { it.durationSeconds }
 
+        Log.d(TAG, "Walking directions parse result: points=${points.size}, instructions=${instructions.size}, totalDistance=$totalDistance, totalDuration=$totalDuration")
         if (points.isEmpty()) return null
         return WalkingRoutePlan(
             distanceMeters = totalDistance,
