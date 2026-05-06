@@ -60,7 +60,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun BleTestScreen(bleManager: BleNusManager) {
+fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
     val context      = LocalContext.current
     val connState    by bleManager.connectionState.collectAsState()
     val connName     by bleManager.connectedName.collectAsState()
@@ -472,6 +472,23 @@ fun BleTestScreen(bleManager: BleNusManager) {
             ) {
                 Text(
                     text = if (isReporting) "신고 중..." else "현재 위치 위험구간 신고",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppWhite
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // ── AI 위험 감지 화면 진입 ───────────────────────
+            Button(
+                onClick = onOpenHazardCam,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = "AI 위험 감지 시작 (카메라)",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = AppWhite

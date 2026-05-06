@@ -1,9 +1,15 @@
 package com.smartcane.backend.domain.hazard.entity;
 
 public enum HazardType {
-    OBSTACLE,
-    HAZARD_STEP,
-    HAZARD_STAIR,
-    HAZARD_SLOPE,
-    DAMAGED_PAVEMENT
+    POLE,
+    BOLLARD,
+    BARRICADE,
+    MOVABLE_SIGNAGE,
+    SIDEWALK_DAMAGED,
+    BRAILLE_GUIDE_BLOCKS_DAMAGED,
+    ALLEY_DAMAGED,
+    CAUTION_ZONE_STAIRS,
+    CAUTION_ZONE_MANHOLE,
+    CAUTION_ZONE_GRATING,
+    CAUTION_ZONE_REPAIR_ZONE
 }

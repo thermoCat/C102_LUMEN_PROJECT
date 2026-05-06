@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import com.ssafy.smartcane.ble.BleNusManager
+import com.ssafy.smartcane.detection.HazardDetectionScreen
 import com.ssafy.smartcane.ui.NavigationScreen
 import com.ssafy.smartcane.ui.theme.SmartCaneTheme
 import com.ssafy.smartcane.viewmodel.NavigationViewModel
@@ -38,12 +39,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             SmartCaneTheme {
                 var showBleTest by remember { mutableStateOf(false) }
+                var showHazardCam by remember { mutableStateOf(false) }
 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    if (showBleTest) {
-                        BleTestScreen(bleManager = bleNusManager)
-                    } else {
-                        NavigationScreen(viewModel = navigationViewModel)
+                    when {
+                        showHazardCam -> HazardDetectionScreen(onClose = { showHazardCam = false })
+                        showBleTest -> BleTestScreen(
+                            bleManager = bleNusManager,
+                            onOpenHazardCam = { showHazardCam = true }
+                        )
+                        else -> NavigationScreen(viewModel = navigationViewModel)
                     }
 
                     FloatingActionButton(
