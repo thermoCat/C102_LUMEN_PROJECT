@@ -27,8 +27,8 @@ class HazardDetectionAnalyzer(
 
     companion object {
         private const val TAG = "HazardDetect"
-        const val THRESHOLD = 0.75f
-        const val COOLDOWN_MS = 10_000L
+        const val THRESHOLD = 0.5f
+        const val COOLDOWN_MS = 5_000L
     }
 
     private val lastReportedAt = mutableMapOf<String, Long>()
