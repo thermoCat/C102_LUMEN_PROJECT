@@ -37,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -83,6 +85,7 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
     }
 
     var lastDetection by remember { mutableStateOf<String?>(null) }
+    var detections by remember { mutableStateOf<List<TFLiteRunner.Result>>(emptyList()) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF1A1A2E)) {
         Column(
@@ -133,16 +136,26 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
                                     .build()
 
                                 val analyzer = HazardDetectionAnalyzer(ctx, scope) { bitmap ->
-                                    runner.classify(bitmap)?.let { res ->
-                                        lastDetection = "${res.label}  ${(res.confidence * 100).toInt()}%"
-                                        HazardDetectionAnalyzer.DetectionResult(res.label, res.confidence)
+                                    val all = runner.detectAll(bitmap)
+                                    detections = all
+                                    // HazardType에 있는 클래스 중 최고 confidence 선택
+                                    val best = all
+                                        .filter { com.ssafy.smartcane.util.HazardType.fromTfliteLabel(it.label) != null }
+                                        .maxByOrNull { it.confidence }
+                                    if (best != null) {
+                                        lastDetection = "${best.label}  ${(best.confidence * 100).toInt()}%"
+                                        HazardDetectionAnalyzer.DetectionResult(best.label, best.confidence)
+                                    } else {
+                                        val anyBest = all.maxByOrNull { it.confidence }
+                                        lastDetection = if (anyBest != null)
+                                            "${anyBest.label} ${(anyBest.confidence*100).toInt()}% (비위험)"
+                                        else "-"
+                                        null
                                     }
                                 }
                                 analysis.setAnalyzer(analyzerExecutor) { proxy ->
                                     val rotated = proxy.toRotatedBitmap()
-                                    if (rotated != null) {
-                                        analyzer.analyzeBitmap(rotated)
-                                    }
+                                    if (rotated != null) analyzer.analyzeBitmap(rotated)
                                     proxy.close()
                                 }
 
@@ -166,6 +179,35 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
+
+                // bbox 오버레이
+                androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                    detections.forEach { det ->
+                        val left   = det.x1 * size.width
+                        val top    = det.y1 * size.height
+                        val right  = det.x2 * size.width
+                        val bottom = det.y2 * size.height
+                        drawRect(
+                            color = androidx.compose.ui.graphics.Color(0xFFFF4444),
+                            topLeft = androidx.compose.ui.geometry.Offset(left, top),
+                            size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                        )
+                        drawIntoCanvas { canvas ->
+                            canvas.nativeCanvas.drawText(
+                                "${det.label} ${"%.0f".format(det.confidence * 100)}%",
+                                left + 8f,
+                                (top - 10f).coerceAtLeast(20f),
+                                android.graphics.Paint().apply {
+                                    color = android.graphics.Color.RED
+                                    textSize = 36f
+                                    isFakeBoldText = true
+                                    setShadowLayer(4f, 0f, 0f, android.graphics.Color.BLACK)
+                                }
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -184,6 +226,17 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
                 color = Color(0xFF78909C),
                 fontSize = 11.sp
             )
+
+            Spacer(Modifier.height(16.dp))
+
+            Button(
+                onClick = onClose,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("← 뒤로가기 (로그 확인)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+            }
         }
     }
 }

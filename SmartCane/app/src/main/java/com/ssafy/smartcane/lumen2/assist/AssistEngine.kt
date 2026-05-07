@@ -376,12 +376,14 @@ class AssistEngine {
     }
 
     private fun shouldVibrate(state: AssistState, changed: Boolean, now: Long): Boolean {
+        // CRITICAL_STOP 만 반복 허용, 나머지는 상태 변화 시 1회만.
+        // "가까울수록 자주, 멀수록 한 번" 원칙.
         val cooldown = when (state) {
-            AssistState.CRITICAL_STOP -> 800L
-            AssistState.CAUTION -> 1600L
-            AssistState.CAMERA_ADJUST -> 3000L
-            AssistState.SYSTEM_UNSTABLE -> 3500L
-            else -> 2400L
+            AssistState.CRITICAL_STOP  -> 1000L   // 1초마다 반복 (너무 빠르면 패닉 유발)
+            AssistState.CAUTION        -> 2000L   // 상태 변화 시 1회 (1.5m → 사용자 이미 인지 중)
+            AssistState.CAMERA_ADJUST,
+            AssistState.SYSTEM_UNSTABLE -> return false  // 진동 없음 (노이즈)
+            else                       -> 99_999L  // SIDE_SPACE, DEPTH_CAUTION → 사실상 changed 시 1회만
         }
         return (changed || state == AssistState.CRITICAL_STOP) && now - lastVibratedAt > cooldown
     }

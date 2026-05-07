@@ -35,14 +35,34 @@ class HazardDetectionAnalyzer(
 
     /** 카메라 프레임 비트맵 1장 처리. */
     fun analyzeBitmap(bitmap: Bitmap) {
-        val result = detect(bitmap) ?: return
+        val result = detect(bitmap)
+        if (result == null) {
+            com.ssafy.smartcane.util.AppLogger.log(TAG, "감지 없음 (threshold 미달 or 모델 null)")
+            return
+        }
+        com.ssafy.smartcane.util.AppLogger.log(TAG, "감지: ${result.tfliteLabel} ${(result.confidence*100).toInt()}%")
 
-        val backendType = HazardType.fromTfliteLabel(result.tfliteLabel) ?: return
-        if (result.confidence < THRESHOLD) return
-        if (!canReport(backendType)) return
+        val backendType = HazardType.fromTfliteLabel(result.tfliteLabel)
+        if (backendType == null) {
+            com.ssafy.smartcane.util.AppLogger.log(TAG, "HazardType 미매핑: ${result.tfliteLabel} → 신고 제외")
+            return
+        }
+        if (result.confidence < THRESHOLD) {
+            com.ssafy.smartcane.util.AppLogger.log(TAG, "confidence 부족: ${result.confidence} < $THRESHOLD")
+            return
+        }
+        if (!canReport(backendType)) {
+            com.ssafy.smartcane.util.AppLogger.log(TAG, "쿨다운 중: $backendType")
+            return
+        }
 
-        val loc = LocationHelper.getLastKnownLocation(context) ?: return
+        val loc = LocationHelper.getLastKnownLocation(context)
+        if (loc == null) {
+            com.ssafy.smartcane.util.AppLogger.log(TAG, "위치 없음 → 신고 불가")
+            return
+        }
         lastReportedAt[backendType] = System.currentTimeMillis()
+        com.ssafy.smartcane.util.AppLogger.log(TAG, "신고 시작: $backendType lat=${loc.first} lng=${loc.second}")
 
         scope.launch {
             val res = HazardApiService.reportWithImage(
@@ -52,7 +72,12 @@ class HazardDetectionAnalyzer(
                 confidence = result.confidence,
                 bitmap = bitmap
             )
-            if (!res.success) Log.e(TAG, "신고 실패: ${res.message}")
+            if (res.success) {
+                com.ssafy.smartcane.util.AppLogger.log(TAG, "✅ 신고 성공: ${res.message}")
+            } else {
+                com.ssafy.smartcane.util.AppLogger.error(TAG, "신고 실패: ${res.message}")
+            }
+            Log.e(TAG, "신고 실패: ${res.message}")
         }
     }
 
