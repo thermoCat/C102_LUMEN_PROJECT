@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.flow.first
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.data.model.FavItem
 import com.ssafy.smartcane.data.model.RouteDestination
@@ -218,7 +219,6 @@ fun SearchScreen(
     var results by remember { mutableStateOf(emptyList<SearchResult>()) }
     var nearbyPlaces by remember { mutableStateOf(emptyList<KakaoPlace>()) }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
-    var hasRequestedNearbySearch by remember { mutableStateOf(false) }
     var voiceStartToken by remember { mutableStateOf(0) }
     var pendingVoiceStart by remember { mutableStateOf(false) }
     var voiceRmsDb by remember { mutableStateOf(0f) }
@@ -317,18 +317,32 @@ fun SearchScreen(
         onLocation = { currentLocation = it }
     )
 
-    LaunchedEffect(currentLocation != null) {
-        if (hasRequestedNearbySearch) return@LaunchedEffect
-        val location = currentLocation ?: return@LaunchedEffect
-        hasRequestedNearbySearch = true
+    // 탭 진입할 때마다 주변 장소 바로 호출
+    LaunchedEffect(Unit) {
+        val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager
 
-        Log.d(
-            NEARBY_SEARCH_TAG,
-            "search nearby from lat=${location.latitude}, lng=${location.longitude}, provider=${location.provider}"
-        )
+        // 1) 캐시된 마지막 위치 즉시 시도
+        if (hasLocationPermission && lm != null) {
+            val providers = runCatching { lm.getProviders(true) }.getOrDefault(emptyList())
+            val cached = providers.firstNotNullOfOrNull { provider ->
+                runCatching { lm.getLastKnownLocation(provider) }.getOrNull()
+            }
+            if (cached != null) currentLocation = cached
+        }
+
+        // 2) 캐시 없으면 GPS 업데이트 대기 (최대 15초)
+        if (currentLocation == null) {
+            kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                androidx.compose.runtime.snapshotFlow { currentLocation }
+                    .first { it != null }
+            }
+        }
+
+        val loc = currentLocation ?: return@LaunchedEffect
+        Log.d(NEARBY_SEARCH_TAG, "nearby search lat=${loc.latitude} lng=${loc.longitude}")
         nearbyPlaces = kakaoLocalSearchService.searchNearbyAttractions(
-            longitude = location.longitude,
-            latitude = location.latitude
+            longitude = loc.longitude,
+            latitude = loc.latitude
         )
         Log.d(NEARBY_SEARCH_TAG, "nearby result count=${nearbyPlaces.size}")
     }
@@ -458,15 +472,6 @@ private fun NearbyLocationEffect(
         }
 
         val providers = runCatching { locationManager.getProviders(true) }.getOrDefault(emptyList())
-
-        // 캐시된 마지막 위치 즉시 제공 → 앱 첫 실행 시 GPS fix 기다리지 않고 바로 주변 검색
-        providers.forEach { provider ->
-            runCatching {
-                locationManager.getLastKnownLocation(provider)?.let { latestOnLocation(it) }
-            }
-        }
-
-        // 이후 실시간 업데이트 등록
         providers.forEach { provider ->
             runCatching {
                 locationManager.requestLocationUpdates(provider, 1_500L, 5f, listener)
