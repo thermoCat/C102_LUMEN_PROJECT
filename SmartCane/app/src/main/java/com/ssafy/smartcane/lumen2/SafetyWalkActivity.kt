@@ -56,6 +56,8 @@ class SafetyWalkActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 화면 켜진 상태 유지 → ARCore 계속 동작
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.safety_walk_activity)
 
         arSurfaceView = findViewById(R.id.arSurfaceView)
@@ -80,6 +82,7 @@ class SafetyWalkActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        SafetyWalkService.start(this)
         frameSource?.resume()
     }
 
@@ -90,6 +93,7 @@ class SafetyWalkActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        SafetyWalkService.stop(this)
         proximityController.reset()
         frameSource?.close()
         trafficExecutor.shutdownNow()

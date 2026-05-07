@@ -36,7 +36,11 @@ class KakaoLocalSearchService(
         withContext(Dispatchers.IO) {
             runCatching {
                 val apiKey = BuildConfig.KAKAO_REST_API_KEY.trim()
-                if (apiKey.isEmpty()) return@withContext emptyList()
+                android.util.Log.d("KakaoSearch", "key=${apiKey.take(6)}… keyword=$keyword")
+                if (apiKey.isEmpty()) {
+                    android.util.Log.e("KakaoSearch", "API 키 비어있음 — BuildConfig 확인 필요")
+                    return@withContext emptyList()
+                }
 
                 val urlBuilder = "https://dapi.kakao.com/v2/local/search/keyword.json"
                     .toHttpUrl()
@@ -61,14 +65,17 @@ class KakaoLocalSearchService(
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@withContext emptyList()
-
+                    android.util.Log.d("KakaoSearch", "HTTP ${response.code}")
+                    if (!response.isSuccessful) {
+                        android.util.Log.e("KakaoSearch", "실패 ${response.code}: ${response.body?.string()}")
+                        return@withContext emptyList()
+                    }
                     val body = response.body?.string().orEmpty()
                     if (body.isBlank()) return@withContext emptyList()
-
                     parsePlaces(body)
                 }
-            }.getOrElse {
+            }.getOrElse { e ->
+                android.util.Log.e("KakaoSearch", "예외 발생", e)
                 emptyList()
             }
         }

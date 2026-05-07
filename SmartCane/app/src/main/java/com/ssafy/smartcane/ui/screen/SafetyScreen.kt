@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,10 +30,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ssafy.smartcane.lumen2.SafetyWalkActivity
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.theme.AppWhite
@@ -45,8 +50,16 @@ fun SafetyScreen(
     onTabChange: (NavTab) -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
     var enabled by remember { mutableStateOf(false) }
     val background = if (enabled) SafetyBackground else NavBarBg
+
+    // SafetyWalkActivity 가 종료되면 enabled 자동 해제
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        enabled = false
+    }
 
     LaunchedEffect(enabled) {
         onEnabledChange(enabled)
@@ -64,8 +77,22 @@ fun SafetyScreen(
         ) {
             SafetyCenteredContent(
                 enabled = enabled,
-                onButtonClick = { enabled = !enabled },
-                onToggle = { enabled = !enabled }
+                onButtonClick = {
+                    if (!enabled) {
+                        enabled = true
+                        launcher.launch(Intent(context, SafetyWalkActivity::class.java))
+                    } else {
+                        enabled = false
+                    }
+                },
+                onToggle = {
+                    if (!enabled) {
+                        enabled = true
+                        launcher.launch(Intent(context, SafetyWalkActivity::class.java))
+                    } else {
+                        enabled = false
+                    }
+                }
             )
         }
         Box(modifier = Modifier.align(Alignment.BottomCenter)) {
