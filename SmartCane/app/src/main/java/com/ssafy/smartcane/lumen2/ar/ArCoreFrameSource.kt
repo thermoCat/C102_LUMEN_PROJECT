@@ -1,0 +1,289 @@
+package com.ssafy.smartcane.lumen2.ar
+
+import android.app.Activity
+import android.media.Image
+import android.opengl.GLES20
+import android.opengl.GLSurfaceView
+import com.google.ar.core.ArCoreApk
+import com.google.ar.core.Config
+import com.google.ar.core.Frame
+import com.google.ar.core.SemanticLabel
+import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.NotYetAvailableException
+import java.nio.ByteBuffer
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.opengles.GL10
+
+/**
+ * ASSIST 모드 전용 ARCore 프레임 소스.
+ * depth + semantics 항상 활성, CPU 이미지 640px 기준.
+ */
+class ArCoreFrameSource(
+    private val activity: Activity,
+    private val surfaceView: GLSurfaceView,
+    private val onFrame: (ArFrameData) -> Unit,
+    private val onStatus: (String) -> Unit
+) : GLSurfaceView.Renderer {
+
+    private var session: Session? = null
+    private var installRequested = false
+    private val backgroundRenderer = CameraBackgroundRenderer()
+    private var depthSupported = false
+    private var semanticsSupported = false
+    private var viewportWidth = 1
+    private var viewportHeight = 1
+    private var lastTimestamp = 0L
+    private var lastDeliveredAtMillis = 0L
+    private var lastCpuImageAtMillis = 0L
+    private var textureCoordinatesReady = false
+
+    private companion object {
+        private const val FRAME_INTERVAL_MS = 66L      // ~15 fps
+        private const val CPU_IMAGE_INTERVAL_MS = 700L // bitmap 은 700ms 마다
+        private const val CPU_IMAGE_MAX_SIDE = 640
+    }
+
+    fun setup() {
+        surfaceView.preserveEGLContextOnPause = true
+        surfaceView.setEGLContextClientVersion(2)
+        surfaceView.setRenderer(this)
+        surfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+    }
+
+    fun resume() {
+        if (session == null && !createSession()) return
+        session?.resume()
+        surfaceView.onResume()
+    }
+
+    fun pause() {
+        surfaceView.onPause()
+        session?.pause()
+    }
+
+    fun close() {
+        session?.close()
+        session = null
+    }
+
+    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        backgroundRenderer.create()
+        session?.setCameraTextureName(backgroundRenderer.textureId)
+    }
+
+    override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+        viewportWidth = width.coerceAtLeast(1)
+        viewportHeight = height.coerceAtLeast(1)
+        session?.setDisplayGeometry(
+            activity.windowManager.defaultDisplay.rotation,
+            viewportWidth, viewportHeight
+        )
+    }
+
+    override fun onDrawFrame(gl: GL10?) {
+        val activeSession = session ?: return
+        activeSession.setCameraTextureName(backgroundRenderer.textureId)
+        activeSession.setDisplayGeometry(
+            activity.windowManager.defaultDisplay.rotation,
+            viewportWidth, viewportHeight
+        )
+        GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+        GLES20.glClearColor(0f, 0f, 0f, 1f)
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+
+        val frame = try {
+            activeSession.update()
+        } catch (t: Throwable) {
+            onStatus("ARCore update failed: ${t.javaClass.simpleName}")
+            return
+        }
+
+        if (frame.hasDisplayGeometryChanged() || !textureCoordinatesReady) {
+            backgroundRenderer.updateTexCoords { input, output ->
+                frame.transformCoordinates2d(
+                    com.google.ar.core.Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input,
+                    com.google.ar.core.Coordinates2d.TEXTURE_NORMALIZED, output
+                )
+            }
+            textureCoordinatesReady = true
+        }
+        backgroundRenderer.draw()
+
+        if (frame.timestamp == 0L || frame.timestamp == lastTimestamp) return
+        lastTimestamp = frame.timestamp
+
+        val now = System.currentTimeMillis()
+        if (now - lastDeliveredAtMillis < FRAME_INTERVAL_MS) return
+        lastDeliveredAtMillis = now
+
+        val needsCpuImage = now - lastCpuImageAtMillis >= CPU_IMAGE_INTERVAL_MS
+        if (needsCpuImage) {
+            lastCpuImageAtMillis = now
+            val cameraImage = try {
+                frame.acquireCameraImage()
+            } catch (_: NotYetAvailableException) {
+                return
+            } catch (t: Throwable) {
+                onStatus("Camera image failed: ${t.javaClass.simpleName}")
+                return
+            }
+            try {
+                onFrame(readFrame(frame, cameraImage))
+            } catch (t: Throwable) {
+                onStatus("Frame read failed: ${t.javaClass.simpleName}")
+            } finally {
+                cameraImage.close()
+            }
+        } else {
+            try {
+                onFrame(readFrame(frame, null))
+            } catch (t: Throwable) {
+                onStatus("Frame read failed: ${t.javaClass.simpleName}")
+            }
+        }
+    }
+
+    private fun createSession(): Boolean {
+        return try {
+            when (ArCoreApk.getInstance().requestInstall(activity, !installRequested)) {
+                ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
+                    installRequested = true
+                    onStatus("Install ARCore requested")
+                    false
+                }
+                ArCoreApk.InstallStatus.INSTALLED -> {
+                    val newSession = Session(activity)
+                    val config = Config(newSession)
+                    depthSupported = newSession.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
+                    semanticsSupported = newSession.isSemanticModeSupported(Config.SemanticMode.ENABLED)
+                    if (depthSupported) config.depthMode = Config.DepthMode.AUTOMATIC
+                    if (semanticsSupported) config.semanticMode = Config.SemanticMode.ENABLED
+                    config.focusMode = Config.FocusMode.AUTO
+                    config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                    newSession.configure(config)
+                    if (backgroundRenderer.textureId != 0) {
+                        newSession.setCameraTextureName(backgroundRenderer.textureId)
+                    }
+                    session = newSession
+                    onStatus("ARCore ready depth=$depthSupported semantics=$semanticsSupported")
+                    true
+                }
+            }
+        } catch (t: Throwable) {
+            onStatus("ARCore unavailable: ${t.message}")
+            false
+        }
+    }
+
+    private fun readFrame(frame: Frame, cameraImage: Image?): ArFrameData {
+        val bitmap = cameraImage?.let {
+            CameraImageConverter.toBitmap(it, CPU_IMAGE_MAX_SIDE)
+        }
+        val depth = readDepth(frame)
+        val semantics = readSemantics(frame)
+        val semanticFractions = readSemanticFractions(frame)
+        val pose = frame.camera.pose
+        return ArFrameData(
+            cameraBitmap = bitmap,
+            timestampNanos = frame.timestamp,
+            viewWidth = viewportWidth,
+            viewHeight = viewportHeight,
+            displayUvCoords = backgroundRenderer.currentTexCoords(),
+            depthWidth = depth?.first ?: 0,
+            depthHeight = depth?.second ?: 0,
+            depthMillimeters = depth?.third,
+            semanticWidth = semantics?.first ?: 0,
+            semanticHeight = semantics?.second ?: 0,
+            semanticLabels = semantics?.third,
+            semanticFractions = semanticFractions,
+            poseTranslation = pose.translation.copyOf(),
+            poseQuaternion = pose.rotationQuaternion.copyOf(),
+            intrinsics = readIntrinsics(frame),
+            tracking = frame.camera.trackingState == TrackingState.TRACKING,
+            depthSupported = depthSupported,
+            semanticsSupported = semanticsSupported
+        )
+    }
+
+    private fun readIntrinsics(frame: Frame): CameraIntrinsicsData {
+        return try {
+            val intrinsics = frame.camera.imageIntrinsics
+            val focal = FloatArray(2)
+            val principal = FloatArray(2)
+            val dims = IntArray(2)
+            intrinsics.getFocalLength(focal, 0)
+            intrinsics.getPrincipalPoint(principal, 0)
+            intrinsics.getImageDimensions(dims, 0)
+            CameraIntrinsicsData(dims[0], dims[1], focal[0], focal[1], principal[0], principal[1])
+        } catch (_: Throwable) {
+            CameraIntrinsicsData(
+                viewportWidth, viewportHeight,
+                viewportWidth.toFloat(), viewportWidth.toFloat(),
+                viewportWidth / 2f, viewportHeight / 2f
+            )
+        }
+    }
+
+    private fun readDepth(frame: Frame): Triple<Int, Int, ShortArray>? {
+        val image = try { frame.acquireDepthImage16Bits() } catch (_: Throwable) { null } ?: return null
+        return image.useImage {
+            val data = ShortArray(width * height)
+            val plane = planes[0]
+            val buffer = plane.buffer
+            val rowStride = plane.rowStride
+            val pixelStride = plane.pixelStride.coerceAtLeast(2)
+            var offset = 0
+            for (row in 0 until height) {
+                val rowStart = row * rowStride
+                for (col in 0 until width) {
+                    val idx = rowStart + col * pixelStride
+                    val low = buffer.get(idx).toInt() and 0xff
+                    val high = buffer.get(idx + 1).toInt() and 0xff
+                    data[offset++] = ((high shl 8) or low).toShort()
+                }
+            }
+            Triple(width, height, data)
+        }
+    }
+
+    private fun readSemantics(frame: Frame): Triple<Int, Int, ByteArray>? {
+        val image = try { frame.acquireSemanticImage() } catch (_: Throwable) { null } ?: return null
+        return image.useImage {
+            val data = ByteArray(width * height)
+            copyPlane(planes[0].buffer, planes[0].rowStride, width, height, data)
+            Triple(width, height, data)
+        }
+    }
+
+    private fun readSemanticFractions(frame: Frame): FloatArray? {
+        return try {
+            FloatArray(12).also {
+                it[0]  = frame.getSemanticLabelFraction(SemanticLabel.UNLABELED)
+                it[1]  = frame.getSemanticLabelFraction(SemanticLabel.SKY)
+                it[2]  = frame.getSemanticLabelFraction(SemanticLabel.BUILDING)
+                it[3]  = frame.getSemanticLabelFraction(SemanticLabel.TREE)
+                it[4]  = frame.getSemanticLabelFraction(SemanticLabel.ROAD)
+                it[5]  = frame.getSemanticLabelFraction(SemanticLabel.SIDEWALK)
+                it[6]  = frame.getSemanticLabelFraction(SemanticLabel.TERRAIN)
+                it[7]  = frame.getSemanticLabelFraction(SemanticLabel.STRUCTURE)
+                it[8]  = frame.getSemanticLabelFraction(SemanticLabel.OBJECT)
+                it[9]  = frame.getSemanticLabelFraction(SemanticLabel.VEHICLE)
+                it[10] = frame.getSemanticLabelFraction(SemanticLabel.PERSON)
+                it[11] = frame.getSemanticLabelFraction(SemanticLabel.WATER)
+            }
+        } catch (_: Throwable) { null }
+    }
+
+    private inline fun <T> Image.useImage(block: Image.() -> T): T {
+        return try { block() } finally { close() }
+    }
+
+    private fun copyPlane(buffer: ByteBuffer, rowStride: Int, width: Int, height: Int, out: ByteArray) {
+        var offset = 0
+        for (row in 0 until height) {
+            val rowStart = row * rowStride
+            for (col in 0 until width) out[offset++] = buffer.get(rowStart + col)
+        }
+    }
+}

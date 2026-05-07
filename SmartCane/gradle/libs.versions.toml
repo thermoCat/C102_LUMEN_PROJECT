@@ -12,6 +12,7 @@ camerax = "1.4.1"
 okhttp = "4.12.0"
 kotlinxCoroutines = "1.10.1"
 arcore = "1.46.0"
+mlkitTextKorean = "16.0.1"
 kakaoMap = "2.13.1"
 tflite = "2.16.1"
 
@@ -39,6 +40,7 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 arcore = { group = "com.google.ar", name = "core", version.ref = "arcore" }
+mlkit-text-recognition-korean = { group = "com.google.mlkit", name = "text-recognition-korean", version.ref = "mlkitTextKorean" }
 kakao-map = { group = "com.kakao.maps.open", name = "android", version.ref = "kakaoMap" }
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tflite" }
 

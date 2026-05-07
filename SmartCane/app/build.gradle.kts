@@ -85,6 +85,10 @@ dependencies {
     implementation(libs.androidx.camera.view)
     // TensorFlow Lite
     implementation(libs.tensorflow.lite)
+    // ARCore (depth + semantics) — Lumen2 안전보행 모듈에서 사용
+    implementation(libs.arcore)
+    // ML Kit (Lumen2: 신호등 잔여시간 OCR)
+    implementation(libs.mlkit.text.recognition.korean)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

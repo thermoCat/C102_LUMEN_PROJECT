@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- ARCore (안전보행 테스트 — depth/semantics) -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+
     <!-- BLE -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <!-- Android 12+ BLE permissions -->
@@ -25,6 +28,10 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- 안전보행 포그라운드 서비스 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
     <queries>
         <intent>
@@ -46,6 +53,23 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SmartCane"
         android:usesCleartextTraffic="true">
+
+        <!-- ARCore: optional 로 두면 비지원 단말에서도 앱 자체는 설치/실행 가능 -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="optional" />
+
+        <activity
+            android:name=".lumen2.SafetyWalkActivity"
+            android:exported="false"
+            android:label="안전보행"
+            android:theme="@style/Theme.SmartCane"
+            android:screenOrientation="portrait" />
+
+        <service
+            android:name=".lumen2.SafetyWalkService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
 
         <activity
             android:name=".MainActivity"

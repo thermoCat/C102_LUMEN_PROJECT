@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
 
         val navigationViewModel = ViewModelProvider(this)[NavigationViewModel::class.java]
-        bleNusManager = BleNusManager(applicationContext)
+        bleNusManager = (application as SmartCaneApplication).bleNusManager
 
         // TTS 초기화
         tts = TextToSpeech(this) { status ->

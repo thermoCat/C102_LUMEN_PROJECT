@@ -1,6 +1,7 @@
 package com.ssafy.smartcane.ui
 
 import android.app.Activity
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,12 @@ fun NavigationScreen(viewModel: NavigationViewModel) {
         val window = (view.context as Activity).window
         window.statusBarColor = screenBackground.toArgb()
         WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+        // 안전보행 ON → 화면 꺼짐 방지 / OFF → 원상복귀
+        if (safetyEnabled) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     LaunchedEffect(tab) {

@@ -450,6 +450,70 @@ private fun ControlTab(
 
         Spacer(Modifier.height(12.dp))
 
+        // ── 안전보행 테스트 (Lumen2) ──────────────────────
+        Button(
+            onClick = {
+                val intent = android.content.Intent(
+                    context,
+                    com.ssafy.smartcane.lumen2.SafetyWalkActivity::class.java
+                )
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("안전보행 테스트", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── 카카오 검색 진단 ──────────────────────────────
+        var kakaoTesting by remember { mutableStateOf(false) }
+        Button(
+            onClick = {
+                scope.launch {
+                    kakaoTesting = true
+                    logHistory.add("── 카카오 검색 진단 시작 ──")
+                    val key = com.ssafy.smartcane.BuildConfig.KAKAO_REST_API_KEY.trim()
+                    logHistory.add("BuildConfig KEY: ${if (key.isEmpty()) "비어있음 ❌" else "${key.take(6)}… (${key.length}자) ✅"}")
+                    if (key.isNotEmpty()) {
+                        logHistory.add("HTTP 직접 요청 중...")
+                        val rawResult = runCatching {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val client = okhttp3.OkHttpClient()
+                                val request = okhttp3.Request.Builder()
+                                    .url("https://dapi.kakao.com/v2/local/search/keyword.json?query=스타벅스&size=1")
+                                    .addHeader("Authorization", "KakaoAK $key")
+                                    .build()
+                                client.newCall(request).execute().use { resp ->
+                                    val code = resp.code
+                                    val body = resp.body?.string().orEmpty().take(200)
+                                    "$code | $body"
+                                }
+                            }
+                        }
+                        rawResult.onSuccess { msg -> logHistory.add("응답: $msg") }
+                        rawResult.onFailure { e -> logHistory.add("예외: ${e.javaClass.simpleName}: ${e.message}") }
+                    }
+                    logHistory.add("── 진단 완료 ──")
+                    kakaoTesting = false
+                    while (logHistory.size > 30) logHistory.removeAt(0)
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            enabled = !kakaoTesting,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text(
+                if (kakaoTesting) "진단 중..." else "카카오맵 검색 진단",
+                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
         // ── 저장된 기기 삭제 ───────────────────────────────
         OutlinedButton(
             onClick = { bleManager.clearSavedDeviceId() },
