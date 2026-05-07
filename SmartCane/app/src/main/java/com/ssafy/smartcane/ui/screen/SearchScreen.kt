@@ -330,12 +330,11 @@ fun SearchScreen(
             if (cached != null) currentLocation = cached
         }
 
-        // 2) 캐시 없으면 GPS 업데이트 대기 (최대 15초)
+        // 2) 캐시 없으면 GPS 업데이트 대기 (타임아웃 없음)
+        // network provider 기준 보통 1~3초, 화면 이탈 시 코루틴 자동 취소
         if (currentLocation == null) {
-            kotlinx.coroutines.withTimeoutOrNull(15_000L) {
-                androidx.compose.runtime.snapshotFlow { currentLocation }
-                    .first { it != null }
-            }
+            androidx.compose.runtime.snapshotFlow { currentLocation }
+                .first { it != null }
         }
 
         val loc = currentLocation ?: return@LaunchedEffect

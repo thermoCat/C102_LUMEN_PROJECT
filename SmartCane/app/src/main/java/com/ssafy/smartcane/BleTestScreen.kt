@@ -472,19 +472,35 @@ private fun ControlTab(
         Button(
             onClick = {
                 val logs = com.ssafy.smartcane.util.AppLogger.entries
+                logHistory.clear()
                 if (logs.isEmpty()) {
                     logHistory.add("── 앱 로그 없음 ──")
                 } else {
                     logHistory.add("── 앱 로그 ${logs.size}개 ──")
-                    logs.takeLast(15).forEach { logHistory.add(it) }
+                    logs.takeLast(50).forEach { logHistory.add(it) }
                 }
-                while (logHistory.size > 30) logHistory.removeAt(0)
             },
             modifier = Modifier.fillMaxWidth().height(48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
             shape = RoundedCornerShape(10.dp)
         ) {
             Text("앱 로그 보기", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // ── 앱 로그 초기화 ────────────────────────────────
+        Button(
+            onClick = {
+                com.ssafy.smartcane.util.AppLogger.clear()
+                logHistory.clear()
+                logHistory.add("── 앱 로그 초기화 완료 ──")
+            },
+            modifier = Modifier.fillMaxWidth().height(40.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4E342E)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("앱 로그 초기화", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppWhite)
         }
 
         Spacer(Modifier.height(8.dp))

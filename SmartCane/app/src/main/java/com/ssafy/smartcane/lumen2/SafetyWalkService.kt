@@ -4,9 +4,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.media.Image
+import android.provider.Settings
 import android.opengl.EGL14
 import android.opengl.EGLConfig
 import android.opengl.EGLContext
@@ -21,6 +26,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.ar.core.ArCoreApk
+import com.google.ar.core.CameraConfig
+import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.SemanticLabel
@@ -39,6 +46,9 @@ import com.ssafy.smartcane.lumen2.ble.ProximityVibrationController
 import com.ssafy.smartcane.util.HazardType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
 
 /**
@@ -74,10 +84,26 @@ class SafetyWalkService : Service() {
     private lateinit var assistEngine: AssistEngine
     private lateinit var proximityController: ProximityVibrationController
 
-    // TFLite 위험 감지 — 실시간 온디바이스 추론
+    // 실시간 GPS + 서버 위치 전송
+    private var locationManager: LocationManager? = null
+    private var locationTrackingJob: kotlinx.coroutines.Job? = null   // BleTestScreen 방식과 동일한 루프
+    private var deviceId: String = ""   // onCreate() 에서 즉시 초기화 (by lazy 는 IO 스레드 접근 시 context 불안정 우려)
+    private val gpsListener = object : LocationListener {
+        override fun onLocationChanged(loc: Location) {
+            // 위험 신고용 로컬 캐시만 갱신 — 서버 전송은 별도 루프가 담당
+            com.ssafy.smartcane.util.LocationHelper.updateLiveLocation(loc.latitude, loc.longitude)
+        }
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+
+    // TFLite 위험 감지 — ARCore bgThread 와 완전 분리된 전용 스레드
     private var tfliteRunner: TFLiteRunner? = null
     private var hazardAnalyzer: HazardDetectionAnalyzer? = null
     private val hazardScope = CoroutineScope(kotlinx.coroutines.Dispatchers.IO + SupervisorJob())
+    private val tfliteExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val tfliteBusy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     companion object {
@@ -145,17 +171,45 @@ class SafetyWalkService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
+        deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+
         val ble = (application as SmartCaneApplication).bleNusManager
-        proximityController = ProximityVibrationController { cmd -> ble.sendCommand(cmd) }
+        proximityController = ProximityVibrationController(send = { cmd -> ble.sendCommand(cmd) })
         assistEngine = AssistEngine()
+
+        // 실시간 GPS 구독 — getLastKnownLocation 의 오래된 캐시 문제 해결
+        startGpsUpdates()
 
         // TFLite 초기화 (model.tflite + labels.txt)
         tfliteRunner = runCatching { TFLiteRunner(this, "model_yolo26n.tflite") }
-            .onFailure { Log.w(TAG, "TFLiteRunner 초기화 실패 — 위험 감지 비활성", it) }
+            .onFailure {
+                Log.w(TAG, "TFLiteRunner 초기화 실패 — 위험 감지 비활성", it)
+                com.ssafy.smartcane.util.AppLogger.error(TAG, "TFLiteRunner 초기화 실패: ${it.message}")
+            }
             .getOrNull()
+        if (tfliteRunner != null) {
+            com.ssafy.smartcane.util.AppLogger.log(TAG, "TFLiteRunner 초기화 성공 ✅")
+        }
         tfliteRunner?.let { runner ->
             hazardAnalyzer = HazardDetectionAnalyzer(this, hazardScope) { bitmap ->
-                runner.classify(bitmap)?.let { res ->
+                com.ssafy.smartcane.util.AppLogger.log(TAG, "detect 람다 호출 bitmap=${bitmap.width}x${bitmap.height}")
+                // 0.3 낮춰서 저신뢰 탐지도 잡되, HazardType에 있는 클래스만 필터 후 최고 confidence 선택.
+                // person/car 같은 비위험 클래스가 더 높은 confidence여도 무시됨.
+                val all = runner.detectAll(bitmap, 0.3f)
+                val result = all
+                    .filter { HazardType.fromTfliteLabel(it.label) != null }
+                    .maxByOrNull { it.confidence }
+                if (result == null) {
+                    if (all.isNotEmpty()) {
+                        val top = all.maxByOrNull { it.confidence }!!
+                        com.ssafy.smartcane.util.AppLogger.log(TAG, "위험 클래스 없음 (최고: ${top.label} ${(top.confidence*100).toInt()}%)")
+                    } else {
+                        com.ssafy.smartcane.util.AppLogger.log(TAG, "감지 없음 (0.3 미달)")
+                    }
+                } else {
+                    com.ssafy.smartcane.util.AppLogger.log(TAG, "위험 감지: ${result.label} ${(result.confidence*100).toInt()}%")
+                }
+                result?.let { res ->
                     HazardDetectionAnalyzer.DetectionResult(res.label, res.confidence)
                 }
             }
@@ -176,14 +230,17 @@ class SafetyWalkService : Service() {
 
     override fun onDestroy() {
         running = false
-        proximityController.reset()
-        tfliteRunner?.close()
-        // 백그라운드 스레드에서 정리
+        runCatching { stopGpsUpdates() }   // GPS 정리 + 위치추적 종료 (hazardScope 취소 전)
+        hazardScope.cancel()
+        runCatching { proximityController.reset() }
+
+        // TFLiteRunner.close() 는 추론 완료 후 executor 스레드에서 호출 (크래시 방지)
+        tfliteExecutor.execute { runCatching { tfliteRunner?.close() } }
+        tfliteExecutor.shutdown()
+
+        // ARCore + EGL 정리는 bgThread 에서
         handler?.post {
-            runCatching {
-                session?.pause()
-                session?.close()
-            }
+            runCatching { session?.pause(); session?.close() }
             session = null
             cleanupEGL()
         }
@@ -192,6 +249,66 @@ class SafetyWalkService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // ── GPS 실시간 업데이트 ─────────────────────────────────────────────────
+
+    @SuppressLint("MissingPermission")
+    private fun startGpsUpdates() {
+        runCatching {
+            val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+            locationManager = lm
+            val providers = lm.getProviders(true)
+            if (providers.isEmpty()) {
+                com.ssafy.smartcane.util.AppLogger.error(TAG, "GPS provider 없음")
+                return
+            }
+            // GPS 업데이트 간격: 1초/1m (BleTestScreen 과 동일)
+            providers.forEach { provider ->
+                lm.requestLocationUpdates(provider, 1_000L, 1f, gpsListener,
+                    android.os.Looper.getMainLooper())
+            }
+            // 즉시 사용할 수 있도록 캐시 위치로 초기화
+            val cached = com.ssafy.smartcane.util.LocationHelper.getLastKnownLocation(this)
+            if (cached != null) {
+                com.ssafy.smartcane.util.LocationHelper.updateLiveLocation(cached.first, cached.second)
+                com.ssafy.smartcane.util.AppLogger.log(TAG, "GPS 초기위치: ${cached.first}, ${cached.second}")
+            }
+            com.ssafy.smartcane.util.AppLogger.log(TAG, "GPS 실시간 구독 시작 (${providers.size}개 provider)")
+
+            // BleTestScreen 과 동일한 방식: 3초마다 마지막 위치를 서버로 전송
+            // GPS 콜백 유무와 무관하게 루프가 지속되므로 정지 상태에서도 추적됨
+            locationTrackingJob = hazardScope.launch {
+                while (isActive) {
+                    val loc = com.ssafy.smartcane.util.LocationHelper.getLastKnownLocation(this@SafetyWalkService)
+                    if (loc != null) {
+                        runCatching {
+                            com.ssafy.smartcane.network.LocationApiService.sendLocation(
+                                deviceId = deviceId,
+                                lat = loc.first,
+                                lng = loc.second
+                            )
+                        }
+                    }
+                    kotlinx.coroutines.delay(3_000L)
+                }
+            }
+        }.onFailure { e ->
+            com.ssafy.smartcane.util.AppLogger.error(TAG, "GPS 구독 실패: ${e.message}")
+        }
+    }
+
+    private fun stopGpsUpdates() {
+        locationTrackingJob?.cancel()
+        locationTrackingJob = null
+        runCatching { locationManager?.removeUpdates(gpsListener) }
+        com.ssafy.smartcane.util.LocationHelper.clearLiveLocation()
+        // 서버에 추적 종료 알림 — hazardScope 취소 전에 별도 스코프로 전송
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            runCatching {
+                com.ssafy.smartcane.network.LocationApiService.sendStop(deviceId)
+            }
+        }
+    }
 
     // ── 초기화 & 루프 ─────────────────────────────────────────────────────
 
@@ -225,15 +342,42 @@ class SafetyWalkService : Service() {
                 val decision = assistEngine.update(arData, TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList()))
                 proximityController.update(decision)
 
-                // TFLite 실시간 위험 감지 — 이전 추론 완료됐을 때만 처리 (프레임 스킵)
+                // TFLite 위험 감지
+                // 이미지 취득(bgThread) → 변환+추론(tfliteExecutor 분리) → bgThread 블로킹 없음
                 if (hazardAnalyzer != null && tfliteBusy.compareAndSet(false, true)) {
-                    runCatching {
-                        frame.acquireCameraImage().use { image ->
-                            val bitmap = CameraImageConverter.toBitmap(image, 640)
-                            hazardAnalyzer?.analyzeBitmap(bitmap)
+                    val cameraImageResult = runCatching { frame.acquireCameraImage() }
+                    val cameraImage = cameraImageResult.getOrNull()
+                    if (cameraImage != null) {
+                        tfliteExecutor.execute {
+                            try {
+                                val raw = runCatching {
+                                    cameraImage.use { CameraImageConverter.toBitmap(it, null) }
+                                }.getOrNull()
+                                if (raw == null) {
+                                    com.ssafy.smartcane.util.AppLogger.error(TAG, "bitmap 변환 실패")
+                                } else {
+                                    // 중심 픽셀 RGB 확인: R≈G≈B 이면 그레이스케일 변환 버그 의심
+                                    val cx = raw.width / 2; val cy = raw.height / 2
+                                    val cp = raw.getPixel(cx, cy)
+                                    val pr = (cp shr 16) and 0xFF
+                                    val pg = (cp shr 8)  and 0xFF
+                                    val pb = cp and 0xFF
+                                    val isGray = kotlin.math.abs(pr - pg) < 8 && kotlin.math.abs(pg - pb) < 8
+                                    val rotated = rotateBitmapForModel(raw)
+                                    com.ssafy.smartcane.util.AppLogger.log(TAG,
+                                        "img ${raw.width}x${raw.height}→${rotated.width}x${rotated.height} " +
+                                        "rgb($pr,$pg,$pb)${if (isGray) " ⚠️GRAY" else ""}")
+                                    hazardAnalyzer?.analyzeBitmap(rotated)
+                                }
+                            } finally {
+                                tfliteBusy.set(false)
+                            }
                         }
+                    } else {
+                        val errName = cameraImageResult.exceptionOrNull()?.javaClass?.simpleName ?: "null"
+                        com.ssafy.smartcane.util.AppLogger.log(TAG, "cameraImage 획득 실패: $errName")
+                        tfliteBusy.set(false)
                     }
-                    tfliteBusy.set(false)
                 }
 
                 Thread.sleep(FRAME_INTERVAL_MS)
@@ -320,6 +464,24 @@ class SafetyWalkService : Service() {
         }
         return runCatching {
             val s = Session(this)
+
+            // CPU 이미지 접근(acquireCameraImage)을 지원하는 CameraConfig 선택.
+            // 기본 config 는 일부 기기에서 CPU 이미지 size = 0 으로 설정돼 있어 항상 실패함.
+            runCatching {
+                val filter = CameraConfigFilter(s)
+                val configs = s.getSupportedCameraConfigs(filter)
+                val cpuCapable = configs.filter { it.imageSize.width > 0 && it.imageSize.height > 0 }
+                val chosen = cpuCapable.minByOrNull { it.imageSize.width.toLong() * it.imageSize.height } // 가장 작은 해상도 우선
+                if (chosen != null) {
+                    s.cameraConfig = chosen
+                    com.ssafy.smartcane.util.AppLogger.log(TAG, "CameraConfig: ${chosen.imageSize.width}x${chosen.imageSize.height}")
+                } else {
+                    com.ssafy.smartcane.util.AppLogger.error(TAG, "CPU 이미지 지원 CameraConfig 없음 — acquireCameraImage 불가")
+                }
+            }.onFailure { e ->
+                com.ssafy.smartcane.util.AppLogger.error(TAG, "CameraConfig 설정 실패: ${e.javaClass.simpleName}")
+            }
+
             val config = Config(s).apply {
                 focusMode = Config.FocusMode.AUTO
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
@@ -345,6 +507,23 @@ class SafetyWalkService : Service() {
     }
 
     // ── 프레임 데이터 읽기 ────────────────────────────────────────────────
+
+    /**
+     * ARCore 카메라 이미지(가로 방향)를 모델 입력에 맞게 회전.
+     * 폰을 세로로 들면 센서 → 화면 기준 90° CW 보정 필요.
+     */
+    private fun rotateBitmapForModel(src: android.graphics.Bitmap): android.graphics.Bitmap {
+        val degrees = when (displayRotation) {
+            android.view.Surface.ROTATION_0   -> 90f
+            android.view.Surface.ROTATION_90  -> 0f
+            android.view.Surface.ROTATION_180 -> 270f
+            android.view.Surface.ROTATION_270 -> 180f
+            else -> 90f
+        }
+        if (degrees == 0f) return src
+        val m = android.graphics.Matrix().apply { postRotate(degrees) }
+        return android.graphics.Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+    }
 
     private fun readFrameData(frame: Frame): ArFrameData? {
         val intrinsics = readIntrinsics(frame)

@@ -29,7 +29,14 @@ import com.ssafy.smartcane.lumen2.assist.DepthAnomalyStatus
  *
  * "걸릴때마다 보내주기" 정책: 같은 명령이라도 프레임마다 발견되면 매번 동일 명령을 송신한다.
  */
-class ProximityVibrationController(private val send: (String) -> Unit) {
+/**
+ * [respectCooldown] = true  : AssistEngine.shouldVibrate 쿨다운 준수 (SafetyWalkService — 백그라운드)
+ * [respectCooldown] = false : 쿨다운 무시, 장애물 감지 즉시 전송 (SafetyWalkActivity — 테스트/디버그)
+ */
+class ProximityVibrationController(
+    private val send: (String) -> Unit,
+    private val respectCooldown: Boolean = true
+) {
 
     private var lastCommand: String? = null
 
@@ -37,7 +44,10 @@ class ProximityVibrationController(private val send: (String) -> Unit) {
         val cmd = commandFor(decision.command, decision.awareness.depthAnomaly)
         when {
             cmd != null -> {
-                send(cmd)
+                val shouldSend = if (respectCooldown) decision.shouldVibrate else true
+                if (shouldSend) {
+                    send(cmd)
+                }
                 lastCommand = cmd
             }
             lastCommand != null -> {

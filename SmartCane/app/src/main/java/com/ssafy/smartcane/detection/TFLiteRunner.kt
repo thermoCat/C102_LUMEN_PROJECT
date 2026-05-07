@@ -22,7 +22,6 @@ class TFLiteRunner(
     private val inputW: Int
     private val inputDType: DataType
     private val outputShape: IntArray
-    private val outputDType: DataType
 
     init {
         val afd = context.assets.openFd(modelFileName)
@@ -45,31 +44,75 @@ class TFLiteRunner(
 
         val outputTensor = interpreter.getOutputTensor(0)
         outputShape = outputTensor.shape()
-        outputDType = outputTensor.dataType()
     }
 
-    fun classify(bitmap: Bitmap): Result? {
+    /**
+     * 가장 높은 confidence 탐지 1개 반환 (HazardDetectionAnalyzer 호환).
+     * [minConfidence] 기본값은 CONFIDENCE_THRESHOLD(0.5).
+     * 서비스에서 진단 목적으로 0.3 등 낮은 값을 지정할 수 있음.
+     */
+    fun classify(bitmap: Bitmap, minConfidence: Float = CONFIDENCE_THRESHOLD): Result? =
+        detectAll(bitmap, minConfidence).maxByOrNull { it.confidence }
+
+    /**
+     * confidence ≥ [minConfidence] 인 모든 탐지 반환.
+     * 출력 형식 [1, N, 6]: 각 행 = [x1, y1, x2, y2, confidence, class_id]
+     * (포맷이 다르면 AppLogger 로그 보고 인덱스 조정)
+     */
+    fun detectAll(bitmap: Bitmap, minConfidence: Float = CONFIDENCE_THRESHOLD): List<Result> {
         val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true)
         val inputBuffer = bitmapToByteBuffer(resized)
 
         val outputSize = outputShape.fold(1) { acc, dim -> acc * dim }
-        val bytesPerElement = if (outputDType == DataType.FLOAT32) 4 else 1
-        val outputBuffer = ByteBuffer.allocateDirect(outputSize * bytesPerElement).apply {
+        val outputBuffer = ByteBuffer.allocateDirect(outputSize * 4).apply {
             order(ByteOrder.nativeOrder())
         }
-
         interpreter.run(inputBuffer, outputBuffer)
-
         outputBuffer.rewind()
-        val probs = if (outputDType == DataType.FLOAT32) {
-            FloatArray(outputSize) { outputBuffer.float }
-        } else {
-            FloatArray(outputSize) { (outputBuffer.get().toInt() and 0xFF) / 255f }
+        val flat = FloatArray(outputSize) { outputBuffer.float }
+
+        val numDetections = if (outputShape.size >= 2) outputShape[outputShape.size - 2] else return emptyList()
+        val stride        = if (outputShape.size >= 1) outputShape[outputShape.size - 1] else return emptyList()
+        if (stride < 6) return emptyList()
+
+        // 포맷 확인용 로그 (처음 3개)
+        for (i in 0 until minOf(3, numDetections)) {
+            val base = i * stride
+            val vals = (0 until stride).map { "%.3f".format(flat[base + it]) }
+            com.ssafy.smartcane.util.AppLogger.log("TFLite", "det[$i]: $vals")
         }
 
-        val idx = probs.indices.maxByOrNull { probs[it] } ?: return null
-        val label = labels.getOrNull(idx) ?: return null
-        return Result(label, probs[idx])
+        val results = mutableListOf<Result>()
+        for (i in 0 until numDetections) {
+            val base    = i * stride
+            val a0      = flat[base + 0]
+            val a1      = flat[base + 1]
+            val a2      = flat[base + 2]
+            val a3      = flat[base + 3]
+            val conf    = flat[base + 4]
+            val classId = flat[base + 5].toInt()
+
+            if (conf < minConfidence) continue
+            val label = labels.getOrNull(classId) ?: continue
+
+            // 포맷 자동 감지:
+            // [cx,cy,w,h]: a3(h) < a1(cy) 불가능 → a1-a3/2 < 0 이 되므로 y2>y1 이 됨
+            // [x1,y1,x2,y2]: y2 >= y1 이 보장됨
+            val isCxCyWH = a2 < a0 || a3 < a1
+            val x1: Float; val y1: Float; val x2: Float; val y2: Float
+            if (isCxCyWH) {
+                // [cx, cy, w, h] → [x1, y1, x2, y2]
+                x1 = (a0 - a2 / 2f).coerceIn(0f, 1f)
+                y1 = (a1 - a3 / 2f).coerceIn(0f, 1f)
+                x2 = (a0 + a2 / 2f).coerceIn(0f, 1f)
+                y2 = (a1 + a3 / 2f).coerceIn(0f, 1f)
+            } else {
+                x1 = a0; y1 = a1; x2 = a2; y2 = a3
+            }
+
+            results += Result(label, conf, x1, y1, x2, y2)
+        }
+        return results
     }
 
     private fun bitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
@@ -98,9 +141,17 @@ class TFLiteRunner(
         return buffer
     }
 
-    override fun close() {
-        interpreter.close()
-    }
+    override fun close() { interpreter.close() }
 
-    data class Result(val label: String, val confidence: Float)
+    data class Result(
+        val label: String,
+        val confidence: Float,
+        /** 정규화 좌표 0~1 (모델 입력 해상도 기준) */
+        val x1: Float = 0f, val y1: Float = 0f,
+        val x2: Float = 0f, val y2: Float = 0f
+    )
+
+    companion object {
+        const val CONFIDENCE_THRESHOLD = 0.5f
+    }
 }

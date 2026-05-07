@@ -6,7 +6,7 @@ import android.util.Log
  * 앱 전역 로그 버퍼 — BleTestScreen 로그창에서 확인 가능.
  */
 object AppLogger {
-    private const val MAX_ENTRIES = 50
+    private const val MAX_ENTRIES = 200
 
     private val _entries = ArrayDeque<String>()
     val entries: List<String> get() = _entries.toList()
