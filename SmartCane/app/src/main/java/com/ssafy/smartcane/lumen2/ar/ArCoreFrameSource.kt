@@ -11,18 +11,21 @@ import com.google.ar.core.SemanticLabel
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import com.google.ar.core.exceptions.NotYetAvailableException
-import com.ssafy.smartcane.lumen2.ui.VisualMode
 import java.nio.ByteBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
+/**
+ * ASSIST 모드 전용 ARCore 프레임 소스.
+ * depth + semantics 항상 활성, CPU 이미지 640px 기준.
+ */
 class ArCoreFrameSource(
     private val activity: Activity,
     private val surfaceView: GLSurfaceView,
-    private val modeProvider: () -> VisualMode,
     private val onFrame: (ArFrameData) -> Unit,
     private val onStatus: (String) -> Unit
 ) : GLSurfaceView.Renderer {
+
     private var session: Session? = null
     private var installRequested = false
     private val backgroundRenderer = CameraBackgroundRenderer()
@@ -32,12 +35,13 @@ class ArCoreFrameSource(
     private var viewportHeight = 1
     private var lastTimestamp = 0L
     private var lastDeliveredAtMillis = 0L
-    private var lastAssistCpuImageAtMillis = 0L
+    private var lastCpuImageAtMillis = 0L
     private var textureCoordinatesReady = false
 
     private companion object {
-        private const val ASSIST_FRAME_INTERVAL_MS = 66L
-        private const val ASSIST_CPU_IMAGE_INTERVAL_MS = 700L
+        private const val FRAME_INTERVAL_MS = 66L      // ~15 fps
+        private const val CPU_IMAGE_INTERVAL_MS = 700L // bitmap 은 700ms 마다
+        private const val CPU_IMAGE_MAX_SIDE = 640
     }
 
     fun setup() {
@@ -71,13 +75,19 @@ class ArCoreFrameSource(
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         viewportWidth = width.coerceAtLeast(1)
         viewportHeight = height.coerceAtLeast(1)
-        session?.setDisplayGeometry(activity.windowManager.defaultDisplay.rotation, viewportWidth, viewportHeight)
+        session?.setDisplayGeometry(
+            activity.windowManager.defaultDisplay.rotation,
+            viewportWidth, viewportHeight
+        )
     }
 
     override fun onDrawFrame(gl: GL10?) {
         val activeSession = session ?: return
         activeSession.setCameraTextureName(backgroundRenderer.textureId)
-        activeSession.setDisplayGeometry(activity.windowManager.defaultDisplay.rotation, viewportWidth, viewportHeight)
+        activeSession.setDisplayGeometry(
+            activity.windowManager.defaultDisplay.rotation,
+            viewportWidth, viewportHeight
+        )
         GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
@@ -88,37 +98,28 @@ class ArCoreFrameSource(
             onStatus("ARCore update failed: ${t.javaClass.simpleName}")
             return
         }
+
         if (frame.hasDisplayGeometryChanged() || !textureCoordinatesReady) {
             backgroundRenderer.updateTexCoords { input, output ->
                 frame.transformCoordinates2d(
-                    com.google.ar.core.Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
-                    input,
-                    com.google.ar.core.Coordinates2d.TEXTURE_NORMALIZED,
-                    output
+                    com.google.ar.core.Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES, input,
+                    com.google.ar.core.Coordinates2d.TEXTURE_NORMALIZED, output
                 )
             }
             textureCoordinatesReady = true
         }
         backgroundRenderer.draw()
+
         if (frame.timestamp == 0L || frame.timestamp == lastTimestamp) return
         lastTimestamp = frame.timestamp
-        val now = System.currentTimeMillis()
 
-        val mode = modeProvider()
-        val deliveryIntervalMillis = when (mode) {
-            VisualMode.TEXT_RECOGNITION -> 350L
-            VisualMode.OBJECT_DETECTION -> 300L
-            VisualMode.ASSIST -> ASSIST_FRAME_INTERVAL_MS
-            else -> 200L
-        }
-        if (now - lastDeliveredAtMillis < deliveryIntervalMillis) return
+        val now = System.currentTimeMillis()
+        if (now - lastDeliveredAtMillis < FRAME_INTERVAL_MS) return
         lastDeliveredAtMillis = now
 
-        val needsCpuImage = mode == VisualMode.TEXT_RECOGNITION ||
-            mode == VisualMode.OBJECT_DETECTION ||
-            (mode == VisualMode.ASSIST && now - lastAssistCpuImageAtMillis >= ASSIST_CPU_IMAGE_INTERVAL_MS)
+        val needsCpuImage = now - lastCpuImageAtMillis >= CPU_IMAGE_INTERVAL_MS
         if (needsCpuImage) {
-            if (mode == VisualMode.ASSIST) lastAssistCpuImageAtMillis = now
+            lastCpuImageAtMillis = now
             val cameraImage = try {
                 frame.acquireCameraImage()
             } catch (_: NotYetAvailableException) {
@@ -127,9 +128,8 @@ class ArCoreFrameSource(
                 onStatus("Camera image failed: ${t.javaClass.simpleName}")
                 return
             }
-
             try {
-                onFrame(readFrame(frame, cameraImage, mode))
+                onFrame(readFrame(frame, cameraImage))
             } catch (t: Throwable) {
                 onStatus("Frame read failed: ${t.javaClass.simpleName}")
             } finally {
@@ -137,7 +137,7 @@ class ArCoreFrameSource(
             }
         } else {
             try {
-                onFrame(readFrame(frame, null, mode))
+                onFrame(readFrame(frame, null))
             } catch (t: Throwable) {
                 onStatus("Frame read failed: ${t.javaClass.simpleName}")
             }
@@ -176,22 +176,14 @@ class ArCoreFrameSource(
         }
     }
 
-    private fun readFrame(frame: Frame, cameraImage: Image?, mode: VisualMode): ArFrameData {
+    private fun readFrame(frame: Frame, cameraImage: Image?): ArFrameData {
         val bitmap = cameraImage?.let {
-            val maxSide = when (mode) {
-                VisualMode.TEXT_RECOGNITION -> 960
-                VisualMode.OBJECT_DETECTION -> 480
-                VisualMode.ASSIST -> 640
-                else -> null
-            }
-            CameraImageConverter.toBitmap(it, maxSide)
+            CameraImageConverter.toBitmap(it, CPU_IMAGE_MAX_SIDE)
         }
-        val depth = if (mode == VisualMode.DEPTH || mode == VisualMode.ASSIST) readDepth(frame) else null
-        val semantics = if (mode == VisualMode.SEMANTICS || mode == VisualMode.ASSIST) readSemantics(frame) else null
-        val semanticFractions = if (mode == VisualMode.SEMANTICS || mode == VisualMode.ASSIST) readSemanticFractions(frame) else null
+        val depth = readDepth(frame)
+        val semantics = readSemantics(frame)
+        val semanticFractions = readSemanticFractions(frame)
         val pose = frame.camera.pose
-        val translation = pose.translation
-        val quaternion = pose.rotationQuaternion
         return ArFrameData(
             cameraBitmap = bitmap,
             timestampNanos = frame.timestamp,
@@ -205,16 +197,16 @@ class ArCoreFrameSource(
             semanticHeight = semantics?.second ?: 0,
             semanticLabels = semantics?.third,
             semanticFractions = semanticFractions,
-            poseTranslation = translation.copyOf(),
-            poseQuaternion = quaternion.copyOf(),
-            intrinsics = readIntrinsics(frame, viewportWidth, viewportHeight),
+            poseTranslation = pose.translation.copyOf(),
+            poseQuaternion = pose.rotationQuaternion.copyOf(),
+            intrinsics = readIntrinsics(frame),
             tracking = frame.camera.trackingState == TrackingState.TRACKING,
             depthSupported = depthSupported,
             semanticsSupported = semanticsSupported
         )
     }
 
-    private fun readIntrinsics(frame: Frame, fallbackWidth: Int, fallbackHeight: Int): CameraIntrinsicsData {
+    private fun readIntrinsics(frame: Frame): CameraIntrinsicsData {
         return try {
             val intrinsics = frame.camera.imageIntrinsics
             val focal = FloatArray(2)
@@ -225,16 +217,16 @@ class ArCoreFrameSource(
             intrinsics.getImageDimensions(dims, 0)
             CameraIntrinsicsData(dims[0], dims[1], focal[0], focal[1], principal[0], principal[1])
         } catch (_: Throwable) {
-            CameraIntrinsicsData(fallbackWidth, fallbackHeight, fallbackWidth.toFloat(), fallbackWidth.toFloat(), fallbackWidth / 2f, fallbackHeight / 2f)
+            CameraIntrinsicsData(
+                viewportWidth, viewportHeight,
+                viewportWidth.toFloat(), viewportWidth.toFloat(),
+                viewportWidth / 2f, viewportHeight / 2f
+            )
         }
     }
 
     private fun readDepth(frame: Frame): Triple<Int, Int, ShortArray>? {
-        val image = try {
-            frame.acquireDepthImage16Bits()
-        } catch (_: Throwable) {
-            null
-        } ?: return null
+        val image = try { frame.acquireDepthImage16Bits() } catch (_: Throwable) { null } ?: return null
         return image.useImage {
             val data = ShortArray(width * height)
             val plane = planes[0]
@@ -245,9 +237,9 @@ class ArCoreFrameSource(
             for (row in 0 until height) {
                 val rowStart = row * rowStride
                 for (col in 0 until width) {
-                    val index = rowStart + col * pixelStride
-                    val low = buffer.get(index).toInt() and 0xff
-                    val high = buffer.get(index + 1).toInt() and 0xff
+                    val idx = rowStart + col * pixelStride
+                    val low = buffer.get(idx).toInt() and 0xff
+                    val high = buffer.get(idx + 1).toInt() and 0xff
                     data[offset++] = ((high shl 8) or low).toShort()
                 }
             }
@@ -256,11 +248,7 @@ class ArCoreFrameSource(
     }
 
     private fun readSemantics(frame: Frame): Triple<Int, Int, ByteArray>? {
-        val image = try {
-            frame.acquireSemanticImage()
-        } catch (_: Throwable) {
-            null
-        } ?: return null
+        val image = try { frame.acquireSemanticImage() } catch (_: Throwable) { null } ?: return null
         return image.useImage {
             val data = ByteArray(width * height)
             copyPlane(planes[0].buffer, planes[0].rowStride, width, height, data)
@@ -271,30 +259,24 @@ class ArCoreFrameSource(
     private fun readSemanticFractions(frame: Frame): FloatArray? {
         return try {
             FloatArray(12).also {
-                it[0] = frame.getSemanticLabelFraction(SemanticLabel.UNLABELED)
-                it[1] = frame.getSemanticLabelFraction(SemanticLabel.SKY)
-                it[2] = frame.getSemanticLabelFraction(SemanticLabel.BUILDING)
-                it[3] = frame.getSemanticLabelFraction(SemanticLabel.TREE)
-                it[4] = frame.getSemanticLabelFraction(SemanticLabel.ROAD)
-                it[5] = frame.getSemanticLabelFraction(SemanticLabel.SIDEWALK)
-                it[6] = frame.getSemanticLabelFraction(SemanticLabel.TERRAIN)
-                it[7] = frame.getSemanticLabelFraction(SemanticLabel.STRUCTURE)
-                it[8] = frame.getSemanticLabelFraction(SemanticLabel.OBJECT)
-                it[9] = frame.getSemanticLabelFraction(SemanticLabel.VEHICLE)
+                it[0]  = frame.getSemanticLabelFraction(SemanticLabel.UNLABELED)
+                it[1]  = frame.getSemanticLabelFraction(SemanticLabel.SKY)
+                it[2]  = frame.getSemanticLabelFraction(SemanticLabel.BUILDING)
+                it[3]  = frame.getSemanticLabelFraction(SemanticLabel.TREE)
+                it[4]  = frame.getSemanticLabelFraction(SemanticLabel.ROAD)
+                it[5]  = frame.getSemanticLabelFraction(SemanticLabel.SIDEWALK)
+                it[6]  = frame.getSemanticLabelFraction(SemanticLabel.TERRAIN)
+                it[7]  = frame.getSemanticLabelFraction(SemanticLabel.STRUCTURE)
+                it[8]  = frame.getSemanticLabelFraction(SemanticLabel.OBJECT)
+                it[9]  = frame.getSemanticLabelFraction(SemanticLabel.VEHICLE)
                 it[10] = frame.getSemanticLabelFraction(SemanticLabel.PERSON)
                 it[11] = frame.getSemanticLabelFraction(SemanticLabel.WATER)
             }
-        } catch (_: Throwable) {
-            null
-        }
+        } catch (_: Throwable) { null }
     }
 
     private inline fun <T> Image.useImage(block: Image.() -> T): T {
-        return try {
-            block()
-        } finally {
-            close()
-        }
+        return try { block() } finally { close() }
     }
 
     private fun copyPlane(buffer: ByteBuffer, rowStride: Int, width: Int, height: Int, out: ByteArray) {
