@@ -120,10 +120,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.ssafy.smartcane.lumen2.SafetyWalkService
 
 private enum class RouteSub { Main, Simple, Navigation }
 private const val USE_DUMMY_ROUTE_MAP = false
-import com.ssafy.smartcane.lumen2.SafetyWalkService
 
 private const val ROUTE_TAG = "RouteScreen"
 private const val MAX_LAST_KNOWN_AGE_MS = 5 * 60 * 1000L
