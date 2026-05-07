@@ -150,7 +150,7 @@ class SafetyWalkService : Service() {
         assistEngine = AssistEngine()
 
         // TFLite 초기화 (model.tflite + labels.txt)
-        tfliteRunner = runCatching { TFLiteRunner(this) }
+        tfliteRunner = runCatching { TFLiteRunner(this, "model_yolo26n.tflite") }
             .onFailure { Log.w(TAG, "TFLiteRunner 초기화 실패 — 위험 감지 비활성", it) }
             .getOrNull()
         tfliteRunner?.let { runner ->

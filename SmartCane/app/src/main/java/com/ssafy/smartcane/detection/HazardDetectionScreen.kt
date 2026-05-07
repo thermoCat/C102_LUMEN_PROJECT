@@ -69,7 +69,7 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
     }
 
     val runner = remember {
-        runCatching { TFLiteRunner(context) }
+        runCatching { TFLiteRunner(context, "model_yolo26n.tflite") }
             .onFailure { Log.w("HazardDetect", "TFLiteRunner 초기화 실패 (모델 미배치)", it) }
             .getOrNull()
     }
