@@ -17,7 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,7 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ssafy.smartcane.lumen2.SafetyWalkActivity
+import com.ssafy.smartcane.lumen2.SafetyWalkService
 import com.ssafy.smartcane.ui.NavTab
 import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.theme.AppWhite
@@ -54,15 +56,28 @@ fun SafetyScreen(
     var enabled by remember { mutableStateOf(false) }
     val background = if (enabled) SafetyBackground else NavBarBg
 
-    // SafetyWalkActivity 가 종료되면 enabled 자동 해제
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        enabled = false
+    // 카메라 권한 요청 → 허용 시 서비스 시작, 거부 시 토글 해제
+    val cameraPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            SafetyWalkService.start(context)
+        } else {
+            enabled = false
+        }
+    }
+
+    fun startService() {
+        val hasPerm = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPerm) SafetyWalkService.start(context)
+        else cameraPermLauncher.launch(Manifest.permission.CAMERA)
     }
 
     LaunchedEffect(enabled) {
         onEnabledChange(enabled)
+        if (!enabled) SafetyWalkService.stop(context)
     }
 
     Box(
@@ -78,20 +93,12 @@ fun SafetyScreen(
             SafetyCenteredContent(
                 enabled = enabled,
                 onButtonClick = {
-                    if (!enabled) {
-                        enabled = true
-                        launcher.launch(Intent(context, SafetyWalkActivity::class.java))
-                    } else {
-                        enabled = false
-                    }
+                    if (!enabled) { enabled = true; startService() }
+                    else { enabled = false }
                 },
                 onToggle = {
-                    if (!enabled) {
-                        enabled = true
-                        launcher.launch(Intent(context, SafetyWalkActivity::class.java))
-                    } else {
-                        enabled = false
-                    }
+                    if (!enabled) { enabled = true; startService() }
+                    else { enabled = false }
                 }
             )
         }

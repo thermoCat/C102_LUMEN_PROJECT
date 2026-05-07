@@ -56,7 +56,6 @@ class SafetyWalkActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 화면 켜진 상태 유지 → ARCore 계속 동작
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.safety_walk_activity)
 
@@ -73,8 +72,11 @@ class SafetyWalkActivity : ComponentActivity() {
         assistSignalTimerReader = AssistSignalTimerReader()
         trafficExecutor = Executors.newSingleThreadExecutor()
 
-        bleNusManager      = (application as SmartCaneApplication).bleNusManager
+        bleNusManager       = (application as SmartCaneApplication).bleNusManager
         proximityController = ProximityVibrationController { cmd -> bleNusManager.sendCommand(cmd) }
+
+        // ARCore 세션 충돌 방지: 서비스 실행 중이면 종료 (토글 상태는 유지됨)
+        SafetyWalkService.stopForActivity(this)
 
         if (hasCameraPermission()) startArCore()
         else permissionLauncher.launch(Manifest.permission.CAMERA)
@@ -82,7 +84,6 @@ class SafetyWalkActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        SafetyWalkService.start(this)
         frameSource?.resume()
     }
 
@@ -93,29 +94,26 @@ class SafetyWalkActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        SafetyWalkService.stop(this)
         proximityController.reset()
         frameSource?.close()
         trafficExecutor.shutdownNow()
         assistTrafficDetector?.close()
         assistSignalTimerReader.close()
         assistFeedback.shutdown()
+        // 카메라 해제 후 — 안전보행 토글이 켜져있으면 서비스 재시작
+        SafetyWalkService.restartIfEnabled(this)
         super.onDestroy()
     }
-
-    // ── ARCore ──────────────────────────────────────────────────────────────
 
     private fun startArCore() {
         if (frameSource != null) { frameSource?.resume(); return }
         frameSource = ArCoreFrameSource(
-            activity  = this,
+            activity    = this,
             surfaceView = arSurfaceView,
-            onFrame   = ::handleFrame,
-            onStatus  = { Log.d(TAG, it) }
+            onFrame     = ::handleFrame,
+            onStatus    = { Log.d(TAG, it) }
         ).also { it.setup(); it.resume() }
     }
-
-    // ── 프레임 처리 (ASSIST 전용) ─────────────────────────────────────────
 
     private fun handleFrame(frame: ArFrameData) {
         val portrait = resources.configuration.orientation ==
@@ -155,10 +153,10 @@ class SafetyWalkActivity : ComponentActivity() {
         val sy = dstH.toFloat() / src.height.toFloat().coerceAtLeast(1f)
         return copy(detections = detections.map { d ->
             d.copy(
-                left   = d.left   * sx, top    = d.top    * sy,
-                right  = d.right  * sx, bottom = d.bottom * sy,
-                ocrLeft   = d.ocrLeft?.times(sx),  ocrTop    = d.ocrTop?.times(sy),
-                ocrRight  = d.ocrRight?.times(sx), ocrBottom = d.ocrBottom?.times(sy)
+                left = d.left * sx, top = d.top * sy,
+                right = d.right * sx, bottom = d.bottom * sy,
+                ocrLeft = d.ocrLeft?.times(sx), ocrTop = d.ocrTop?.times(sy),
+                ocrRight = d.ocrRight?.times(sx), ocrBottom = d.ocrBottom?.times(sy)
             )
         })
     }
