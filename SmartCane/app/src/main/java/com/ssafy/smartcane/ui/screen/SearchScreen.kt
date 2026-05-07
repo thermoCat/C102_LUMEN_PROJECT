@@ -458,6 +458,15 @@ private fun NearbyLocationEffect(
         }
 
         val providers = runCatching { locationManager.getProviders(true) }.getOrDefault(emptyList())
+
+        // 캐시된 마지막 위치 즉시 제공 → 앱 첫 실행 시 GPS fix 기다리지 않고 바로 주변 검색
+        providers.forEach { provider ->
+            runCatching {
+                locationManager.getLastKnownLocation(provider)?.let { latestOnLocation(it) }
+            }
+        }
+
+        // 이후 실시간 업데이트 등록
         providers.forEach { provider ->
             runCatching {
                 locationManager.requestLocationUpdates(provider, 1_500L, 5f, listener)

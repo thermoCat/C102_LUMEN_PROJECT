@@ -121,6 +121,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.ssafy.smartcane.lumen2.SafetyWalkService
+import com.ssafy.smartcane.util.AppLogger
 
 private enum class RouteSub { Main, Simple, Navigation }
 private const val USE_DUMMY_ROUTE_MAP = false
@@ -1153,7 +1154,9 @@ private fun RouteMapView(
                         object : MapLifeCycleCallback() {
                             override fun onMapDestroy() = Unit
                             override fun onMapError(error: Exception) {
-                                mapError = error.message ?: error.javaClass.simpleName
+                                val msg = error.message ?: error.javaClass.simpleName
+                                mapError = msg
+                                AppLogger.error("KakaoMap", "onMapError: $msg")
                             }
                         },
                         object : KakaoMapReadyCallback() {
