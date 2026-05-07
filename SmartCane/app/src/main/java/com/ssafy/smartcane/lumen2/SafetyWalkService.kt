@@ -27,12 +27,18 @@ import com.google.ar.core.SemanticLabel
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import com.ssafy.smartcane.SmartCaneApplication
+import com.ssafy.smartcane.detection.HazardDetectionAnalyzer
+import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.lumen2.ar.ArFrameData
 import com.ssafy.smartcane.lumen2.ar.CameraIntrinsicsData
+import com.ssafy.smartcane.lumen2.ar.CameraImageConverter
 import com.ssafy.smartcane.lumen2.assist.AssistEngine
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneEvidence
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneStatus
 import com.ssafy.smartcane.lumen2.ble.ProximityVibrationController
+import com.ssafy.smartcane.util.HazardType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import java.nio.ByteBuffer
 
 /**
@@ -67,6 +73,12 @@ class SafetyWalkService : Service() {
 
     private lateinit var assistEngine: AssistEngine
     private lateinit var proximityController: ProximityVibrationController
+
+    // TFLite 위험 감지 — 실시간 온디바이스 추론
+    private var tfliteRunner: TFLiteRunner? = null
+    private var hazardAnalyzer: HazardDetectionAnalyzer? = null
+    private val hazardScope = CoroutineScope(kotlinx.coroutines.Dispatchers.IO + SupervisorJob())
+    private val tfliteBusy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     companion object {
         private const val TAG = "SafetyWalkService"
@@ -137,6 +149,19 @@ class SafetyWalkService : Service() {
         proximityController = ProximityVibrationController { cmd -> ble.sendCommand(cmd) }
         assistEngine = AssistEngine()
 
+        // TFLite 초기화 (model.tflite + labels.txt)
+        tfliteRunner = runCatching { TFLiteRunner(this) }
+            .onFailure { Log.w(TAG, "TFLiteRunner 초기화 실패 — 위험 감지 비활성", it) }
+            .getOrNull()
+        tfliteRunner?.let { runner ->
+            hazardAnalyzer = HazardDetectionAnalyzer(this, hazardScope) { bitmap ->
+                runner.classify(bitmap)?.let { res ->
+                    HazardDetectionAnalyzer.DetectionResult(res.label, res.confidence)
+                }
+            }
+            Log.d(TAG, "TFLite 위험 감지 활성화")
+        }
+
         bgThread.start()
         handler = Handler(bgThread.looper)
     }
@@ -152,6 +177,7 @@ class SafetyWalkService : Service() {
     override fun onDestroy() {
         running = false
         proximityController.reset()
+        tfliteRunner?.close()
         // 백그라운드 스레드에서 정리
         handler?.post {
             runCatching {
@@ -193,11 +219,22 @@ class SafetyWalkService : Service() {
                     Thread.sleep(16); continue
                 }
                 lastTimestamp = frame.timestamp
-                cameraFailCount = 0 // 성공 시 실패 카운트 리셋
+                cameraFailCount = 0
 
                 val arData = readFrameData(frame) ?: continue
                 val decision = assistEngine.update(arData, TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList()))
                 proximityController.update(decision)
+
+                // TFLite 실시간 위험 감지 — 이전 추론 완료됐을 때만 처리 (프레임 스킵)
+                if (hazardAnalyzer != null && tfliteBusy.compareAndSet(false, true)) {
+                    runCatching {
+                        frame.acquireCameraImage().use { image ->
+                            val bitmap = CameraImageConverter.toBitmap(image, 640)
+                            hazardAnalyzer?.analyzeBitmap(bitmap)
+                        }
+                    }
+                    tfliteBusy.set(false)
+                }
 
                 Thread.sleep(FRAME_INTERVAL_MS)
             } catch (_: InterruptedException) {
