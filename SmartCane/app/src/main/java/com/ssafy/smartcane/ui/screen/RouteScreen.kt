@@ -123,6 +123,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private enum class RouteSub { Main, Simple, Navigation }
 private const val USE_DUMMY_ROUTE_MAP = false
+import com.ssafy.smartcane.lumen2.SafetyWalkService
+
 private const val ROUTE_TAG = "RouteScreen"
 private const val MAX_LAST_KNOWN_AGE_MS = 5 * 60 * 1000L
 private const val REROUTE_COOLDOWN_MS = 30_000L
@@ -277,7 +279,10 @@ fun RouteScreen(
                 routeMessage.isNotBlank() -> routeMessage
                 else -> ""
             },
-            onNavigation = { sub = RouteSub.Navigation },
+            onNavigation = {
+                sub = RouteSub.Navigation
+                SafetyWalkService.start(context)   // 길 안내 시작 → 보행 어시스턴트 + TFLite 활성
+            },
             onSimple = { sub = RouteSub.Simple },
             onFav = { onTabChange(NavTab.Fav) },
             onTabChange = onTabChange
@@ -302,7 +307,11 @@ fun RouteScreen(
             routePlan = routePlan,
             routeMatch = routeMatch,
             routeMessage = routeMessage,
-            onStop = { sub = RouteSub.Main },
+            onStop = {
+                sub = RouteSub.Main
+                // 길 안내 종료 → SafetyScreen 토글이 OFF면 서비스도 종료
+                if (!SafetyWalkService.userEnabled) SafetyWalkService.stop(context)
+            },
             onTabChange = { nextTab ->
                 sub = RouteSub.Main
                 if (nextTab != NavTab.Route) onTabChange(nextTab)
