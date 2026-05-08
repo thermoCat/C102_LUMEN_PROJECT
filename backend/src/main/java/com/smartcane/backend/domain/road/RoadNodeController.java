@@ -1,5 +1,6 @@
 package com.smartcane.backend.domain.road;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,7 +14,9 @@ import java.util.Map;
 /**
  * ITS 도로 노드(교차로) 데이터 API.
  * its_gj_nodes 테이블에서 bbox 내 노드를 조회하여 GeoJSON으로 반환.
+ * PostgreSQL 설정이 없는 환경(CI/테스트)에서는 빈 생성 제외.
  */
+@ConditionalOnExpression("'${app.datasource.postgres.host:}' != ''")
 @RestController
 @RequestMapping("/road")
 public class RoadNodeController {

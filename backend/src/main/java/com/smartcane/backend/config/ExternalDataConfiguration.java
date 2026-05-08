@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -35,6 +36,12 @@ public class ExternalDataConfiguration {
             properties.getUsername(),
             properties.getPassword()
         );
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${app.datasource.postgres.host:}' != ''")
+    public JdbcTemplate jdbcTemplate(@Qualifier("postgresDataSource") DataSource dataSource) {
+        return new JdbcTemplate(dataSource);
     }
 
     @Bean
