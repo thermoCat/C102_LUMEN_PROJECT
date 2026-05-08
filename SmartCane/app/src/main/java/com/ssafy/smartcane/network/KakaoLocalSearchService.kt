@@ -2,6 +2,7 @@
 
 import com.ssafy.smartcane.BuildConfig
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
@@ -94,21 +95,25 @@ class KakaoLocalSearchService(
                 if (apiKey.isEmpty()) return@withContext emptyList()
 
                 val categoryGroups = listOf("SW8", "CS2", "FD6", "CE7", "BK9", "PM9", "HP8", "AT4")
-                categoryGroups
-                    .map { categoryGroup ->
-                        async {
-                            searchNearbyCategory(
-                                apiKey = apiKey,
-                                categoryGroup = categoryGroup,
-                                longitude = longitude,
-                                latitude = latitude,
-                                radiusMeters = radiusMeters,
-                                size = 5
-                            )
+                coroutineScope {
+                    categoryGroups
+                        .map { categoryGroup ->
+                            async {
+                                runCatching {
+                                    searchNearbyCategory(
+                                        apiKey = apiKey,
+                                        categoryGroup = categoryGroup,
+                                        longitude = longitude,
+                                        latitude = latitude,
+                                        radiusMeters = radiusMeters,
+                                        size = 5
+                                    )
+                                }.getOrElse { emptyList() }
+                            }
                         }
-                    }
-                    .awaitAll()
-                    .flatten()
+                        .awaitAll()
+                        .flatten()
+                }
                     .distinctBy { it.placeName to it.addressName }
                     .sortedBy { it.distanceMeters }
                     .take(size)
