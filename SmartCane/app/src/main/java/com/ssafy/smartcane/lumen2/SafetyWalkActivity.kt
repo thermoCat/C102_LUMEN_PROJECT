@@ -73,11 +73,7 @@ class SafetyWalkActivity : ComponentActivity() {
         trafficExecutor = Executors.newSingleThreadExecutor()
 
         bleNusManager       = (application as SmartCaneApplication).bleNusManager
-        // 테스트 Activity: 쿨다운 무시, 장애물 감지 즉시 진동
-        proximityController = ProximityVibrationController(
-            send = { cmd -> bleNusManager.sendCommand(cmd) },
-            respectCooldown = false
-        )
+        proximityController = ProximityVibrationController(send = { cmd -> bleNusManager.sendCommand(cmd) })
 
         // ARCore 세션 충돌 방지: 서비스 실행 중이면 종료 (토글 상태는 유지됨)
         SafetyWalkService.stopForActivity(this)

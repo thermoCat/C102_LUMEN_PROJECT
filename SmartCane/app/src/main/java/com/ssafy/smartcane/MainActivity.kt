@@ -106,14 +106,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             SmartCaneTheme {
                 var showBleTest by remember { mutableStateOf(false) }
-                var showHazardCam by remember { mutableStateOf(false) }
+                // "test:model_1.tflite" 형식이면 testMode=true
+                var hazardCamModel by remember { mutableStateOf<String?>(null) }
+                val isTestMode = hazardCamModel?.startsWith("test:") == true
+                val actualModelName = hazardCamModel?.removePrefix("test:") ?: ""
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     when {
-                        showHazardCam -> HazardDetectionScreen(onClose = { showHazardCam = false })
+                        hazardCamModel != null -> HazardDetectionScreen(
+                            onClose = { hazardCamModel = null },
+                            modelFileName = actualModelName,
+                            testMode = isTestMode
+                        )
                         showBleTest -> BleTestScreen(
                             bleManager = bleNusManager,
-                            onOpenHazardCam = { showHazardCam = true }
+                            onOpenHazardCam = { model -> hazardCamModel = model }
                         )
                         else -> NavigationScreen(viewModel = navigationViewModel)
                     }

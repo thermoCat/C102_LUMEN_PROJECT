@@ -45,23 +45,84 @@
 
     #map { width: 100%; height: calc(100vh - 100px); }
 
+    /* 호버 툴팁 */
     #popup {
       position: absolute;
       background: #16213e;
       border: 1px solid #0f3460;
       border-radius: 8px;
-      padding: 12px 16px;
-      min-width: 200px;
-      font-size: 13px;
+      padding: 10px 14px;
+      min-width: 160px;
+      font-size: 12px;
       pointer-events: none;
       display: none;
       z-index: 1000;
       box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     }
-    #popup h3 { color: #e94560; margin-bottom: 8px; font-size: 14px; }
-    #popup p { margin: 4px 0; color: #ccc; }
+    #popup h3 { color: #e94560; margin-bottom: 6px; font-size: 13px; }
+    #popup p  { margin: 3px 0; color: #ccc; }
     #popup strong { color: #eee; }
-    #popup-img { width: 200px; height: 150px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; display: none; }
+
+    /* 클릭 시 목록 패널 */
+    #detail-panel {
+      position: absolute;
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 10px;
+      width: 300px;
+      max-height: 70vh;
+      display: none;
+      flex-direction: column;
+      z-index: 2000;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    #detail-header {
+      padding: 12px 16px;
+      background: #0f3460;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #detail-title { font-size: 14px; font-weight: bold; color: #e94560; }
+    #detail-close {
+      background: none; border: none; color: #aaa;
+      font-size: 18px; cursor: pointer; padding: 0; line-height: 1;
+    }
+    #detail-close:hover { color: #fff; background: none; }
+    #detail-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px;
+    }
+    .detail-item {
+      background: #1a2744;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: default;
+    }
+    .detail-item:last-child { margin-bottom: 0; }
+    .detail-item-type {
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .detail-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .detail-item-row { font-size: 12px; color: #aaa; margin: 3px 0; }
+    .detail-item-row span { color: #ddd; }
+    .detail-item img {
+      width: 100%; height: 120px; object-fit: cover;
+      border-radius: 6px; margin-top: 8px; display: none;
+    }
 
     .legend {
       position: absolute;
@@ -118,12 +179,22 @@
 </div>
 
 <div id="map"></div>
+
+<!-- 호버 툴팁 -->
 <div id="popup">
-  <img id="popup-img" src="" alt="위험 이미지">
   <h3 id="popup-type"></h3>
+  <p id="popup-count-line" style="display:none">신고 수: <strong id="popup-count"></strong>건</p>
   <p>신뢰도: <strong id="popup-confidence"></strong></p>
-  <p>설명: <strong id="popup-desc"></strong></p>
   <p>시각: <strong id="popup-time"></strong></p>
+</div>
+
+<!-- 클릭 목록 패널 -->
+<div id="detail-panel">
+  <div id="detail-header">
+    <span id="detail-title">위험 신고 목록</span>
+    <button id="detail-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div id="detail-list"></div>
 </div>
 
 <div class="legend">
@@ -274,6 +345,52 @@ function connectSse() {
   };
 }
 
+function closeDetail() {
+  document.getElementById('detail-panel').style.display = 'none';
+}
+
+function showDetail(items) {
+  const panel = document.getElementById('detail-panel');
+  const list  = document.getElementById('detail-list');
+  const title = document.getElementById('detail-title');
+
+  title.textContent = `위험 신고 목록 (${items.length}건)`;
+  list.innerHTML = '';
+
+  items
+    .slice()
+    .sort((a, b) => (b.reportedAt || '').localeCompare(a.reportedAt || ''))
+    .forEach((p, idx) => {
+      const color  = COLORS[p.type] || '#999';
+      const koType = TYPE_KO[p.type] || p.type;
+      const conf   = p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '-';
+      const time   = p.reportedAt ? p.reportedAt.replace('T', ' ').substring(0, 16) : '-';
+
+      const div = document.createElement('div');
+      div.className = 'detail-item';
+      div.innerHTML = `
+        <div class="detail-item-type">
+          <div class="detail-dot" style="background:${color}"></div>
+          ${koType}
+        </div>
+        <div class="detail-item-row">신뢰도: <span>${conf}</span></div>
+        <div class="detail-item-row">시각: <span>${time}</span></div>
+        ${p.description ? `<div class="detail-item-row">설명: <span>${p.description}</span></div>` : ''}
+      `;
+
+      if (p.imageUrl) {
+        const img = document.createElement('img');
+        img.src = `/api/hazards/image?s3Url=${encodeURIComponent(p.imageUrl)}`;
+        img.style.display = 'block';
+        div.appendChild(img);
+      }
+
+      list.appendChild(div);
+    });
+
+  panel.style.display = 'flex';
+}
+
 let map, sidewalkLayer, crosswalkLayer;
 
 function toggleLayer(name) {
@@ -285,14 +402,28 @@ function toggleLayer(name) {
   btn.classList.toggle('off', !visible);
 }
 
-function makeStyle(type) {
-  return new ol.style.Style({
-    image: new ol.style.Circle({
-      radius: 10,
-      fill: new ol.style.Fill({ color: COLORS[type] || '#999' }),
-      stroke: new ol.style.Stroke({ color: '#fff', width: 2 })
+function makeStyle(type, count) {
+  const radius = count > 1 ? 14 : 10;
+  const styles = [
+    new ol.style.Style({
+      image: new ol.style.Circle({
+        radius,
+        fill: new ol.style.Fill({ color: COLORS[type] || '#999' }),
+        stroke: new ol.style.Stroke({ color: '#fff', width: 2 })
+      })
     })
-  });
+  ];
+  if (count > 1) {
+    styles.push(new ol.style.Style({
+      text: new ol.style.Text({
+        text: String(count),
+        font: 'bold 11px sans-serif',
+        fill: new ol.style.Fill({ color: '#fff' }),
+        offsetY: 1
+      })
+    }));
+  }
+  return styles;
 }
 
 let hazardDebounceTimer = null;
@@ -316,15 +447,28 @@ function loadHazards() {
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(geojson => {
       hazardSource.clear();
+
+      // 같은 좌표끼리 그룹핑 (소수점 5자리 기준)
+      const groups = {};
       geojson.features.forEach(f => {
         const [lng, lat] = f.geometry.coordinates;
+        const key = `${parseFloat(lat).toFixed(5)},${parseFloat(lng).toFixed(5)}`;
+        if (!groups[key]) groups[key] = { lng, lat, items: [] };
+        groups[key].items.push(f.properties);
+      });
+
+      Object.values(groups).forEach(g => {
+        const dominant = g.items.reduce((a, b) =>
+          (b.confidence || 0) > (a.confidence || 0) ? b : a, g.items[0]);
         const feature = new ol.Feature({
-          geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat])),
-          props: f.properties
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([g.lng, g.lat])),
+          props: dominant,
+          allProps: g.items
         });
-        feature.setStyle(makeStyle(f.properties.type));
+        feature.setStyle(makeStyle(dominant.type, g.items.length));
         hazardSource.addFeature(feature);
       });
+
       document.getElementById('count').textContent = geojson.totalCount;
     })
     .catch(e => console.error('API 오류:', e))
@@ -378,18 +522,25 @@ function loadHazardsDebounced() {
     });
 
     const popup = document.getElementById('popup');
+
+    // 호버 → 간단 툴팁
     map.on('pointermove', e => {
       const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
-      if (feature) {
+      if (feature && feature.get('props')) {
         const p = feature.get('props');
-        if (!p) { popup.style.display = 'none'; return; }
+        const all = feature.get('allProps') || [p];
         document.getElementById('popup-type').textContent = TYPE_KO[p.type] || p.type;
-        document.getElementById('popup-confidence').textContent = p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '-';
-        document.getElementById('popup-desc').textContent = p.description || '-';
-        document.getElementById('popup-time').textContent = p.reportedAt ? p.reportedAt.replace('T', ' ').substring(0, 19) : '-';
-        const img = document.getElementById('popup-img');
-        if (p.imageUrl) { img.src = `/api/hazards/image?s3Url=${encodeURIComponent(p.imageUrl)}`; img.style.display = 'block'; }
-        else { img.style.display = 'none'; }
+        document.getElementById('popup-confidence').textContent =
+          p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '-';
+        document.getElementById('popup-time').textContent =
+          p.reportedAt ? p.reportedAt.replace('T', ' ').substring(0, 16) : '-';
+        const countLine = document.getElementById('popup-count-line');
+        if (all.length > 1) {
+          document.getElementById('popup-count').textContent = all.length;
+          countLine.style.display = 'block';
+        } else {
+          countLine.style.display = 'none';
+        }
         popup.style.display = 'block';
         popup.style.left = (e.pixel[0] + 15) + 'px';
         popup.style.top  = (e.pixel[1] - 10) + 'px';
@@ -397,6 +548,14 @@ function loadHazardsDebounced() {
       } else {
         popup.style.display = 'none';
         map.getTargetElement().style.cursor = '';
+      }
+    });
+
+    // 클릭 → 목록 패널
+    map.on('singleclick', e => {
+      const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
+      if (feature && feature.get('allProps')) {
+        showDetail(feature.get('allProps'));
       }
     });
 

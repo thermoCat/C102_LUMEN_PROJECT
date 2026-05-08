@@ -50,8 +50,16 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ssafy.smartcane.ui.theme.AppWhite
 import java.util.concurrent.Executors
 
+/**
+ * [testMode] = true  : 신고/쿨다운 없음, 임계값 0.1f, 전체 클래스 bbox 표시 (모델 테스트용)
+ * [testMode] = false : HazardDetectionAnalyzer 경유, 자동 신고 활성 (기존 동작)
+ */
 @Composable
-fun HazardDetectionScreen(onClose: () -> Unit) {
+fun HazardDetectionScreen(
+    onClose: () -> Unit,
+    modelFileName: String = "model_yolo26n.tflite",
+    testMode: Boolean = false
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -70,18 +78,21 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
         if (!hasPermission) permLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    val runner = remember {
-        runCatching { TFLiteRunner(context, "model_yolo26n.tflite") }
-            .onFailure { Log.w("HazardDetect", "TFLiteRunner 초기화 실패 (모델 미배치)", it) }
+    val runner = remember(modelFileName) {
+        runCatching { TFLiteRunner(context, modelFileName) }
+            .onFailure { Log.w("HazardDetect", "TFLiteRunner 초기화 실패: $modelFileName", it) }
             .getOrNull()
-    }
-    DisposableEffect(runner) {
-        onDispose { runner?.close() }
     }
 
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
-    DisposableEffect(Unit) {
-        onDispose { analyzerExecutor.shutdown() }
+
+    // 종료 순서: analyzer 중단 → 마지막 추론 완료 대기 → runner 닫기
+    DisposableEffect(runner) {
+        onDispose {
+            analyzerExecutor.shutdown()
+            runCatching { analyzerExecutor.awaitTermination(500, java.util.concurrent.TimeUnit.MILLISECONDS) }
+            runCatching { runner?.close() }
+        }
     }
 
     var lastDetection by remember { mutableStateOf<String?>(null) }
@@ -94,8 +105,8 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
             // 헤더
             Box(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "AI 위험 감지",
-                    fontSize = 18.sp,
+                    text = "AI 위험 감지  |  $modelFileName",
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = AppWhite,
                     modifier = Modifier.align(Alignment.Center)
@@ -118,6 +129,12 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
                     .background(Color.Black, RoundedCornerShape(8.dp))
             ) {
                 if (hasPermission && runner != null) {
+                    // 화면 닫힐 때 카메라 명시적 해제
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() }
+                        }
+                    }
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { ctx ->
@@ -135,28 +152,46 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
                                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                     .build()
 
-                                val analyzer = HazardDetectionAnalyzer(ctx, scope) { bitmap ->
-                                    val all = runner.detectAll(bitmap)
-                                    detections = all
-                                    // HazardType에 있는 클래스 중 최고 confidence 선택
-                                    val best = all
-                                        .filter { com.ssafy.smartcane.util.HazardType.fromTfliteLabel(it.label) != null }
-                                        .maxByOrNull { it.confidence }
-                                    if (best != null) {
-                                        lastDetection = "${best.label}  ${(best.confidence * 100).toInt()}%"
-                                        HazardDetectionAnalyzer.DetectionResult(best.label, best.confidence)
-                                    } else {
-                                        val anyBest = all.maxByOrNull { it.confidence }
-                                        lastDetection = if (anyBest != null)
-                                            "${anyBest.label} ${(anyBest.confidence*100).toInt()}% (비위험)"
-                                        else "-"
-                                        null
+                                if (testMode) {
+                                    // ── 테스트 모드: 신고 없음, 낮은 임계값, 전체 클래스 표시 ──
+                                    analysis.setAnalyzer(analyzerExecutor) { proxy ->
+                                        runCatching {
+                                            val rotated = proxy.toRotatedBitmap()
+                                            if (rotated != null) {
+                                                val all = runner.detectAll(rotated, 0.1f)
+                                                detections = all
+                                                lastDetection = all.maxByOrNull { it.confidence }
+                                                    ?.let { "${it.label} ${"%.0f".format(it.confidence * 100)}%" }
+                                            }
+                                        }
+                                        proxy.close()
                                     }
-                                }
-                                analysis.setAnalyzer(analyzerExecutor) { proxy ->
-                                    val rotated = proxy.toRotatedBitmap()
-                                    if (rotated != null) analyzer.analyzeBitmap(rotated)
-                                    proxy.close()
+                                } else {
+                                    // ── 기존 모드: HazardDetectionAnalyzer 경유, 자동 신고 ──
+                                    val analyzer = HazardDetectionAnalyzer(ctx, scope) { bitmap ->
+                                        val all = runner.detectAll(bitmap)
+                                        detections = all
+                                        val best = all
+                                            .filter { com.ssafy.smartcane.util.HazardType.fromTfliteLabel(it.label) != null }
+                                            .maxByOrNull { it.confidence }
+                                        if (best != null) {
+                                            lastDetection = "${best.label}  ${(best.confidence * 100).toInt()}%"
+                                            HazardDetectionAnalyzer.DetectionResult(best.label, best.confidence)
+                                        } else {
+                                            val anyBest = all.maxByOrNull { it.confidence }
+                                            lastDetection = if (anyBest != null)
+                                                "${anyBest.label} ${(anyBest.confidence*100).toInt()}% (비위험)"
+                                            else "-"
+                                            null
+                                        }
+                                    }
+                                    analysis.setAnalyzer(analyzerExecutor) { proxy ->
+                                        runCatching {
+                                            val rotated = proxy.toRotatedBitmap()
+                                            if (rotated != null) analyzer.analyzeBitmap(rotated)
+                                        }
+                                        proxy.close()
+                                    }
                                 }
 
                                 provider.unbindAll()
@@ -222,8 +257,11 @@ fun HazardDetectionScreen(onClose: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = "임계값 ${HazardDetectionAnalyzer.THRESHOLD} 이상 + 같은 타입 ${HazardDetectionAnalyzer.COOLDOWN_MS / 1000}초 쿨다운으로 자동 신고합니다.",
-                color = Color(0xFF78909C),
+                text = if (testMode)
+                    "테스트 모드 — 임계값 0.1, 신고/쿨다운 없음, 전체 클래스 표시"
+                else
+                    "임계값 ${HazardDetectionAnalyzer.THRESHOLD} 이상 + 같은 타입 ${HazardDetectionAnalyzer.COOLDOWN_MS / 1000}초 쿨다운으로 자동 신고합니다.",
+                color = Color(if (testMode) 0xFF29B6F6 else 0xFF78909C),
                 fontSize = 11.sp
             )
 
