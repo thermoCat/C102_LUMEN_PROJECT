@@ -174,7 +174,8 @@
   <button onclick="loadHazards()">새로고침</button>
   <button id="btn-sidewalk" class="toggle-btn" onclick="toggleLayer('sidewalk')">인도 ON</button>
   <button id="btn-crosswalk" class="toggle-btn" onclick="toggleLayer('crosswalk')">횡단보도 ON</button>
-  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명</div>
+  <button id="btn-nodes" class="toggle-btn off" onclick="toggleNodes()">교차로 OFF</button>
+  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명 &nbsp;|&nbsp; 교차로: <span id="node-count">0</span>개</div>
   <span id="sse-status">SSE 연결 중...</span>
 </div>
 
@@ -211,6 +212,7 @@
   <div class="legend-item"><div class="legend-dot" style="background:#795548"></div> 배수구 주의구역</div>
   <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div> 공사구역 주의구역</div>
   <div class="legend-item" style="margin-top:8px"><div class="legend-dot" style="background:#29B6F6"></div> 보행자 (실시간)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#00E676; border-color:#00E676"></div> 교차로 노드 (ITS)</div>
 </div>
 
 <script>
@@ -247,6 +249,88 @@ const osmLayer = new ol.layer.Tile({
 
 const hazardSource = new ol.source.Vector();
 const hazardLayer = new ol.layer.Vector({ source: hazardSource });
+
+// ── 교차로 노드 레이어 ──────────────────────────────────────
+const nodeSource = new ol.source.Vector();
+const nodeLayer  = new ol.layer.Vector({
+  source: nodeSource,
+  visible: false   // 기본 OFF
+});
+
+const NODE_TYPE_KO = {
+  '1': '교차로',
+  '2': '로터리',
+  '3': '입체교차로',
+  '4': '종점/시점',
+  '5': '기타노드'
+};
+
+function nodeStyle(nodeType) {
+  const colors = {
+    '1': '#00E676',   // 교차로 — 초록
+    '2': '#76FF03',   // 로터리 — 연두
+    '3': '#FFEA00',   // 입체교차로 — 노랑
+    '4': '#90A4AE',   // 종점/시점 — 회색
+  };
+  const color = colors[nodeType] || '#B2FF59';
+  return new ol.style.Style({
+    image: new ol.style.Circle({
+      radius: 5,
+      fill: new ol.style.Fill({ color }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 1.5 })
+    })
+  });
+}
+
+let nodesVisible = false;
+let nodesFetching = false;
+let nodeDebounceTimer = null;
+
+function toggleNodes() {
+  nodesVisible = !nodesVisible;
+  nodeLayer.setVisible(nodesVisible);
+  const btn = document.getElementById('btn-nodes');
+  btn.textContent = '교차로 ' + (nodesVisible ? 'ON' : 'OFF');
+  btn.classList.toggle('off', !nodesVisible);
+  if (nodesVisible) loadNodes();
+  else {
+    nodeSource.clear();
+    document.getElementById('node-count').textContent = '0';
+  }
+}
+
+function loadNodes() {
+  if (!nodesVisible || nodesFetching) return;
+  const size = map.getSize();
+  if (!size || size[0] === 0) return;
+  const extent = ol.proj.transformExtent(
+    map.getView().calculateExtent(size), 'EPSG:3857', 'EPSG:4326'
+  );
+  nodesFetching = true;
+  fetch(`/api/road/nodes?minLng=${extent[0]}&minLat=${extent[1]}&maxLng=${extent[2]}&maxLat=${extent[3]}&limit=2000`)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(geojson => {
+      nodeSource.clear();
+      geojson.features.forEach(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        const feature = new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat])),
+          nodeProps: f.properties
+        });
+        feature.setStyle(nodeStyle(String(f.properties.nodeType)));
+        nodeSource.addFeature(feature);
+      });
+      document.getElementById('node-count').textContent = geojson.totalCount;
+    })
+    .catch(e => console.error('교차로 노드 로드 실패:', e))
+    .finally(() => { nodesFetching = false; });
+}
+
+function loadNodesDebounced() {
+  if (!nodesVisible) return;
+  clearTimeout(nodeDebounceTimer);
+  nodeDebounceTimer = setTimeout(loadNodes, 400);
+}
 
 const walkerSource = new ol.source.Vector();
 const walkerLayer = new ol.layer.Vector({ source: walkerSource });
@@ -514,7 +598,7 @@ function loadHazardsDebounced() {
 
     map = new ol.Map({
       target: 'map',
-      layers: [osmLayer, sidewalkLayer, crosswalkLayer, hazardLayer, walkerLayer],
+      layers: [osmLayer, sidewalkLayer, crosswalkLayer, nodeLayer, hazardLayer, walkerLayer],
       view: new ol.View({
         center: ol.proj.fromLonLat([126.8099, 35.2024]),
         zoom: 16
@@ -526,6 +610,22 @@ function loadHazardsDebounced() {
     // 호버 → 간단 툴팁
     map.on('pointermove', e => {
       const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
+
+      // 교차로 노드 호버
+      if (feature && feature.get('nodeProps')) {
+        const np = feature.get('nodeProps');
+        document.getElementById('popup-type').textContent =
+          (NODE_TYPE_KO[String(np.nodeType)] || '노드') + (np.nodeName ? '  ' + np.nodeName : '');
+        document.getElementById('popup-confidence').textContent = 'ID: ' + (np.nodeId || '-');
+        document.getElementById('popup-time').textContent = '유형코드: ' + (np.nodeType || '-');
+        document.getElementById('popup-count-line').style.display = 'none';
+        popup.style.display = 'block';
+        popup.style.left = (e.pixel[0] + 15) + 'px';
+        popup.style.top  = (e.pixel[1] - 10) + 'px';
+        map.getTargetElement().style.cursor = 'pointer';
+        return;
+      }
+
       if (feature && feature.get('props')) {
         const p = feature.get('props');
         const all = feature.get('allProps') || [p];
@@ -560,6 +660,7 @@ function loadHazardsDebounced() {
     });
 
     map.on('moveend', loadHazardsDebounced);
+    map.on('moveend', loadNodesDebounced);
 
     // 맵이 완전히 렌더된 후 최초 1회 로드 (getSize()가 [0,0]인 타이밍 버그 방지)
     map.once('rendercomplete', loadHazards);
