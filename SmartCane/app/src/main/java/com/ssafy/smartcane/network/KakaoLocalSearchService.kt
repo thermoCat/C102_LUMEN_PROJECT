@@ -1,7 +1,9 @@
 ﻿package com.ssafy.smartcane.network
 
 import com.ssafy.smartcane.BuildConfig
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -93,16 +95,20 @@ class KakaoLocalSearchService(
 
                 val categoryGroups = listOf("SW8", "CS2", "FD6", "CE7", "BK9", "PM9", "HP8", "AT4")
                 categoryGroups
-                    .flatMap { categoryGroup ->
-                        searchNearbyCategory(
-                            apiKey = apiKey,
-                            categoryGroup = categoryGroup,
-                            longitude = longitude,
-                            latitude = latitude,
-                            radiusMeters = radiusMeters,
-                            size = 5
-                        )
+                    .map { categoryGroup ->
+                        async {
+                            searchNearbyCategory(
+                                apiKey = apiKey,
+                                categoryGroup = categoryGroup,
+                                longitude = longitude,
+                                latitude = latitude,
+                                radiusMeters = radiusMeters,
+                                size = 5
+                            )
+                        }
                     }
+                    .awaitAll()
+                    .flatten()
                     .distinctBy { it.placeName to it.addressName }
                     .sortedBy { it.distanceMeters }
                     .take(size)
