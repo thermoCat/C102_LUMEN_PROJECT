@@ -159,6 +159,12 @@ fun HazardDetectionScreen(
                                             val rotated = proxy.toRotatedBitmap()
                                             if (rotated != null) {
                                                 val all = runner.detectAll(rotated, 0.1f)
+                                                if (all.isNotEmpty()) {
+                                                    val summary = all.groupBy { it.label }
+                                                        .map { (l, v) -> "$l×${v.size}" }
+                                                        .joinToString(", ")
+                                                    com.ssafy.smartcane.util.AppLogger.log("TestCam", summary)
+                                                }
                                                 detections = all
                                                 lastDetection = all.maxByOrNull { it.confidence }
                                                     ?.let { "${it.label} ${"%.0f".format(it.confidence * 100)}%" }

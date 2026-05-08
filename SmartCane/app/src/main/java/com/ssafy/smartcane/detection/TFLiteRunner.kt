@@ -129,8 +129,12 @@ class TFLiteRunner(
                     else flat[i * numChannels + 4]
                 } else 1f
 
+                // labels.txt 수가 모델 클래스 수보다 많으면 범위 초과 방지
+                val numClasses = minOf(labels.size, numChannels - classStart)
+                if (numClasses <= 0) continue
+
                 var maxScore = 0f; var maxIdx = 0
-                for (c in 0 until labels.size) {
+                for (c in 0 until numClasses) {
                     val score = if (isTransposed) flat[(classStart + c) * numAnchors + i]
                                 else flat[i * numChannels + classStart + c]
                     if (score > maxScore) { maxScore = score; maxIdx = c }
