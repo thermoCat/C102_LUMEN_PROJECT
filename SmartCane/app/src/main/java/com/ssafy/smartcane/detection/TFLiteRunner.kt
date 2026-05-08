@@ -56,8 +56,13 @@ class TFLiteRunner(
 
     /**
      * confidence ≥ [minConfidence] 인 모든 탐지 반환.
-     * 출력 형식 [1, N, 6]: 각 행 = [x1, y1, x2, y2, confidence, class_id]
-     * (포맷이 다르면 AppLogger 로그 보고 인덱스 조정)
+     *
+     * 지원 출력 형식:
+     *  A) [1, N, 6]          — [x1,y1,x2,y2,conf,class_id]  (구형 단일 클래스 conf)
+     *  B) [1, N, 4+C]        — [cx,cy,w,h, c0,c1,...,cC]    (YOLOv8/v11 비전치)
+     *  C) [1, 4+C, N]        — 전치(transposed) YOLOv8/v11   ← 해당 모델
+     *
+     * 형식 C 감지 기준: stride(마지막 차원) > numDetections(앞 차원) * 10
      */
     fun detectAll(bitmap: Bitmap, minConfidence: Float = CONFIDENCE_THRESHOLD): List<Result> {
         val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true)
@@ -71,48 +76,113 @@ class TFLiteRunner(
         outputBuffer.rewind()
         val flat = FloatArray(outputSize) { outputBuffer.float }
 
-        val numDetections = if (outputShape.size >= 2) outputShape[outputShape.size - 2] else return emptyList()
-        val stride        = if (outputShape.size >= 1) outputShape[outputShape.size - 1] else return emptyList()
-        if (stride < 6) return emptyList()
+        val dimA = if (outputShape.size >= 2) outputShape[outputShape.size - 2] else return emptyList()
+        val dimB = if (outputShape.size >= 1) outputShape[outputShape.size - 1] else return emptyList()
 
-        // 포맷 확인용 로그 (처음 3개)
-        for (i in 0 until minOf(3, numDetections)) {
-            val base = i * stride
-            val vals = (0 until stride).map { "%.3f".format(flat[base + it]) }
-            com.ssafy.smartcane.util.AppLogger.log("TFLite", "det[$i]: $vals")
+        // 형식 C 판별: 전치 여부 — dimB(앵커 수, ~8400) >> dimA(채널 수, ~26)
+        val isTransposed = dimB > dimA * 10
+
+        val numAnchors  = if (isTransposed) dimB else dimA
+        val numChannels = if (isTransposed) dimA else dimB
+
+        com.ssafy.smartcane.util.AppLogger.log("TFLite",
+            "shape=[${outputShape.joinToString()}] transposed=$isTransposed anchors=$numAnchors channels=$numChannels")
+
+        // 채널 수로 형식 구분
+        val isLegacy = numChannels == 6  // 형식 A: conf + class_id
+        val hasObjScore = !isLegacy && numChannels == 5 + labels.size  // YOLOv5: obj + classes
+        val classStart = when {
+            isLegacy    -> 4   // 사용 안 함 (별도 처리)
+            hasObjScore -> 5
+            else        -> 4   // YOLOv8/v11: bbox(4) + classes
         }
 
         val results = mutableListOf<Result>()
-        for (i in 0 until numDetections) {
-            val base    = i * stride
-            val a0      = flat[base + 0]
-            val a1      = flat[base + 1]
-            val a2      = flat[base + 2]
-            val a3      = flat[base + 3]
-            val conf    = flat[base + 4]
-            val classId = flat[base + 5].toInt()
+
+        for (i in 0 until numAnchors) {
+            // bbox 좌표 읽기
+            val cx: Float; val cy: Float; val bw: Float; val bh: Float
+            if (isTransposed) {
+                cx = flat[0 * numAnchors + i]
+                cy = flat[1 * numAnchors + i]
+                bw = flat[2 * numAnchors + i]
+                bh = flat[3 * numAnchors + i]
+            } else {
+                val base = i * numChannels
+                cx = flat[base + 0]; cy = flat[base + 1]
+                bw = flat[base + 2]; bh = flat[base + 3]
+            }
+
+            val conf: Float
+            val classId: Int
+
+            if (isLegacy) {
+                // 형식 A: flat[4]=conf, flat[5]=class_id
+                conf = if (isTransposed) flat[4 * numAnchors + i]
+                       else flat[i * numChannels + 4]
+                classId = (if (isTransposed) flat[5 * numAnchors + i]
+                           else flat[i * numChannels + 5]).toInt()
+            } else {
+                // 형식 B/C: argmax over class scores
+                val objScore = if (hasObjScore) {
+                    if (isTransposed) flat[4 * numAnchors + i]
+                    else flat[i * numChannels + 4]
+                } else 1f
+
+                var maxScore = 0f; var maxIdx = 0
+                for (c in 0 until labels.size) {
+                    val score = if (isTransposed) flat[(classStart + c) * numAnchors + i]
+                                else flat[i * numChannels + classStart + c]
+                    if (score > maxScore) { maxScore = score; maxIdx = c }
+                }
+                conf    = objScore * maxScore
+                classId = maxIdx
+            }
 
             if (conf < minConfidence) continue
             val label = labels.getOrNull(classId) ?: continue
 
-            // 포맷 자동 감지:
-            // [cx,cy,w,h]: a3(h) < a1(cy) 불가능 → a1-a3/2 < 0 이 되므로 y2>y1 이 됨
-            // [x1,y1,x2,y2]: y2 >= y1 이 보장됨
-            val isCxCyWH = a2 < a0 || a3 < a1
+            // 좌표 형식 자동 감지: cx,cy,w,h vs x1,y1,x2,y2
+            // YOLOv11(전치)는 항상 cx,cy,w,h; 레거시는 둘 다 가능
+            val isCxCyWH = isTransposed || bw < cx || bh < cy
             val x1: Float; val y1: Float; val x2: Float; val y2: Float
             if (isCxCyWH) {
-                // [cx, cy, w, h] → [x1, y1, x2, y2]
-                x1 = (a0 - a2 / 2f).coerceIn(0f, 1f)
-                y1 = (a1 - a3 / 2f).coerceIn(0f, 1f)
-                x2 = (a0 + a2 / 2f).coerceIn(0f, 1f)
-                y2 = (a1 + a3 / 2f).coerceIn(0f, 1f)
+                x1 = (cx - bw / 2f).coerceIn(0f, 1f)
+                y1 = (cy - bh / 2f).coerceIn(0f, 1f)
+                x2 = (cx + bw / 2f).coerceIn(0f, 1f)
+                y2 = (cy + bh / 2f).coerceIn(0f, 1f)
             } else {
-                x1 = a0; y1 = a1; x2 = a2; y2 = a3
+                x1 = cx; y1 = cy; x2 = bw; y2 = bh
             }
 
             results += Result(label, conf, x1, y1, x2, y2)
         }
-        return results
+
+        // NMS: 겹치는 박스 제거 (IoU > 0.45이면 낮은 confidence 제거)
+        val nmsResult = nms(results)
+        com.ssafy.smartcane.util.AppLogger.log("TFLite",
+            "raw=${results.size} → NMS후=${nmsResult.size} (threshold=$minConfidence)")
+        return nmsResult
+    }
+
+    /** Non-Maximum Suppression */
+    private fun nms(detections: List<Result>, iouThreshold: Float = 0.45f): List<Result> {
+        val sorted = detections.sortedByDescending { it.confidence }
+        val kept = mutableListOf<Result>()
+        for (det in sorted) {
+            if (kept.none { iou(it, det) > iouThreshold }) {
+                kept += det
+            }
+        }
+        return kept
+    }
+
+    private fun iou(a: Result, b: Result): Float {
+        val ix1 = maxOf(a.x1, b.x1); val iy1 = maxOf(a.y1, b.y1)
+        val ix2 = minOf(a.x2, b.x2); val iy2 = minOf(a.y2, b.y2)
+        val inter = maxOf(0f, ix2 - ix1) * maxOf(0f, iy2 - iy1)
+        val union = (a.x2-a.x1)*(a.y2-a.y1) + (b.x2-b.x1)*(b.y2-b.y1) - inter
+        return if (union <= 0f) 0f else inter / union
     }
 
     private fun bitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {

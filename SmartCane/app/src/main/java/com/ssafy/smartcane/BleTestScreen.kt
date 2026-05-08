@@ -61,7 +61,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
+fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: (String) -> Unit = {}) {
     val context   = LocalContext.current
     val connState by bleManager.connectionState.collectAsState()
     val connName  by bleManager.connectedName.collectAsState()
@@ -296,7 +296,7 @@ fun BleTestScreen(bleManager: BleNusManager, onOpenHazardCam: () -> Unit = {}) {
                             isReporting = false
                         }
                     },
-                    onOpenHazardCam = onOpenHazardCam
+                    onOpenModel = onOpenHazardCam
                 )
                 1 -> LogTab(logHistory = logHistory, scrollState = scrollState)
             }
@@ -320,7 +320,7 @@ private fun ControlTab(
     onDisconnect: () -> Unit,
     onTrackingToggle: (Boolean) -> Unit,
     onReport: () -> Unit,
-    onOpenHazardCam: () -> Unit
+    onOpenModel: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -438,14 +438,37 @@ private fun ControlTab(
 
         Spacer(Modifier.height(20.dp))
 
-        // ── AI 위험 감지 ───────────────────────────────────
+        // ── AI 위험 감지 (기존 모델 — 자동 신고) ─────────────
         Button(
-            onClick = onOpenHazardCam,
+            onClick = { onOpenModel("model_yolo26n.tflite") },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
             shape = RoundedCornerShape(10.dp)
         ) {
             Text("AI 위험 감지 시작 (카메라)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // ── AI 위험 감지 (신규 모델 테스트 — 신고 없음) ──────
+        SectionLabel("모델 테스트 (신고 없음 · bbox만)")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                onClick = { onOpenModel("test:model_1.tflite") },
+                modifier = Modifier.weight(1f).height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Model 1", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+            }
+            Button(
+                onClick = { onOpenModel("test:model_2.tflite") },
+                modifier = Modifier.weight(1f).height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Model 2", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+            }
         }
 
         Spacer(Modifier.height(12.dp))
