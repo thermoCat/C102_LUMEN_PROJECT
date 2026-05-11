@@ -33,6 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -210,6 +215,11 @@ private fun SafetyActionButton(enabled: Boolean, onClick: () -> Unit) {
                 .padding(horizontal = 36.dp, vertical = 36.dp)
                 .height(90.dp)
                 .background(if (enabled) SafetyAccent else Color(0xFF222222), RoundedCornerShape(42.dp))
+                .semantics {
+                    role = Role.Button
+                    contentDescription = if (enabled) "안전 보행 중지" else "안전 보행 시작"
+                    stateDescription = if (enabled) "켜짐" else "꺼짐"
+                }
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
@@ -235,6 +245,11 @@ private fun SafetySwitch(enabled: Boolean, onToggle: () -> Unit) {
         modifier = Modifier
             .size(width = 68.dp, height = 34.dp)
             .background(if (enabled) SafetyAccent else Color(0xFF222222), RoundedCornerShape(17.dp))
+            .semantics {
+                role = Role.Switch
+                contentDescription = "안전 보행"
+                stateDescription = if (enabled) "켜짐" else "꺼짐"
+            }
             .clickable(onClick = onToggle)
             .padding(horizontal = 4.dp),
         contentAlignment = Alignment.CenterStart

@@ -13,6 +13,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,6 +27,10 @@ import com.ssafy.smartcane.ui.theme.AppWhite
 fun BackBtn(onClick: () -> Unit) {
     Row(
         modifier = Modifier
+            .clearAndSetSemantics {
+                contentDescription = "뒤로 가기"
+                role = Role.Button
+            }
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },

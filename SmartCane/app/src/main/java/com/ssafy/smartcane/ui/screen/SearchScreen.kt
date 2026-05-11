@@ -78,6 +78,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -595,6 +601,10 @@ private fun SearchBrowseView(
                         .padding(end = searchBarTrailingSpace)
                         .clip(RoundedCornerShape(10.dp))
                         .background(NavBg2)
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = if (inResults) "장소 검색어 입력" else "장소 검색 열기"
+                        }
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }
@@ -619,6 +629,9 @@ private fun SearchBrowseView(
                             singleLine = true,
                             modifier = Modifier
                                 .weight(1f)
+                                .semantics {
+                                    contentDescription = "장소 검색어"
+                                }
                                 .focusRequester(searchFocusRequester),
                             cursorBrush = SolidColor(AppWhite),
                             textStyle = TextStyle(
@@ -662,7 +675,12 @@ private fun SearchBrowseView(
                             color = AppWhite,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
-                            modifier = Modifier.clickable(onClick = onCancel)
+                            modifier = Modifier
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "검색 취소"
+                                }
+                                .clickable(onClick = onCancel)
                         )
                     }
                 }
@@ -706,6 +724,10 @@ private fun SearchBrowseView(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "${result.name.take(12)}, ${result.addr}, 목적지로 선택"
+                                }
                                 .clickable(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
@@ -740,6 +762,11 @@ private fun SearchBrowseView(
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
+                                    .semantics {
+                                        role = Role.Button
+                                        contentDescription = "${result.name.take(12)} 즐겨찾기"
+                                        stateDescription = if (result.starred) "추가됨" else "추가되지 않음"
+                                    }
                                     .clickable(
                                         indication = null,
                                         interactionSource = remember { MutableInteractionSource() }
@@ -906,7 +933,8 @@ private fun SearchMainScrollContent(
                 text = "\uc704\uce58 \uac80\uc0c9",
                 color = AppWhite.copy(alpha = compactTitleAlpha),
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.semantics { heading() }
             )
             Box(
                 modifier = Modifier
@@ -915,6 +943,10 @@ private fun SearchMainScrollContent(
                     .height(34.dp)
                     .clip(RoundedCornerShape(17.dp))
                     .background(NavYellow.copy(alpha = compactTitleAlpha))
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "음성 검색"
+                    }
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
@@ -950,13 +982,19 @@ private fun SearchTitleRow(onVoice: () -> Unit) {
             color = AppWhite,
             fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
+                .semantics { heading() }
         )
         Box(
             modifier = Modifier
                 .height(40.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(NavYellow)
+                .semantics {
+                    role = Role.Button
+                    contentDescription = "음성 검색"
+                }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
@@ -1005,6 +1043,10 @@ private fun MainSearchField(onOpenSearch: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(NavBg2)
+            .semantics {
+                role = Role.Button
+                contentDescription = "도로명 주소로 직접 입력"
+            }
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1123,6 +1165,10 @@ private fun NearbyRecommendationRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics {
+                role = Role.Button
+                contentDescription = "${place.placeName}, ${formatDistance(place.distanceMeters)}, ${place.addressName.ifBlank { place.roadAddressName }}, 목적지로 선택"
+            }
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1217,6 +1263,10 @@ private fun VoiceOverlay(
                 Box(
                     modifier = Modifier
                         .size(160.dp)
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = if (listening) "음성 검색 듣는 중, 취소" else "음성 검색 준비 중, 취소"
+                        }
                         .clickable(onClick = onCancel),
                     contentAlignment = Alignment.Center
                 ) {

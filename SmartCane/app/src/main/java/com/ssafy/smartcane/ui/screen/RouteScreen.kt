@@ -64,6 +64,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -474,7 +479,12 @@ private fun ExampleRouteGuideView(
                 color = AppWhite,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.clickable(onClick = onDone)
+                modifier = Modifier
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "경로 안내 완료"
+                    }
+                    .clickable(onClick = onDone)
             )
         }
         HorizontalDivider(color = Color(0xFF2B2B2B), thickness = 1.dp)
@@ -507,6 +517,9 @@ private fun StartRouteRow(originName: String) {
         modifier = Modifier
             .fillMaxWidth()
             .height(168.dp)
+            .semantics {
+                contentDescription = "출발지, ${originName.ifBlank { "출발지" }}"
+            }
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -538,6 +551,9 @@ private fun ExampleRouteGuideRow(item: RouteInstruction) {
         modifier = Modifier
             .fillMaxWidth()
             .height(168.dp)
+            .semantics {
+                contentDescription = "${item.title}, ${formatDistance(item.distanceMeters)}"
+            }
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -568,6 +584,9 @@ private fun ExampleDestinationRow(destName: String) {
         modifier = Modifier
             .fillMaxWidth()
             .height(168.dp)
+            .semantics {
+                contentDescription = "도착지, ${destName.ifBlank { "도착지" }}"
+            }
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -886,6 +905,10 @@ private fun MapNavView(
                     modifier = Modifier
                         .size(50.dp)
                         .clip(CircleShape)
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = "현재 위치로 지도 이동"
+                        }
                         .clickable { currentFocusRequest++ }
                         .background(NavYellow, CircleShape),
                     contentAlignment = Alignment.Center
@@ -912,6 +935,10 @@ private fun MapNavView(
                     .height(51.dp)
                     .clip(RoundedCornerShape(25.dp))
                     .background(NavYellow)
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "내비게이션 종료"
+                    }
                     .clickable(onClick = onStop),
                 contentAlignment = Alignment.Center
             ) {
@@ -944,6 +971,9 @@ private fun NavigationRouteHeader(
             .fillMaxWidth()
             .height(185.dp)
             .background(NavBg)
+            .semantics {
+                contentDescription = "현재 안내 단계 ${safeStepIndex + 1}/${safeSteps.size}, ${safeSteps[safeStepIndex].title}, ${safeSteps[safeStepIndex].subtitle}"
+            }
             .padding(horizontal = 10.dp, vertical = 5.dp)
             .pointerInput(safeSteps, currentStepIndex) {
                 var dragAmount = 0f
@@ -1007,6 +1037,15 @@ private fun NavigationStepCard(step: NavigationStep) {
         modifier = Modifier
             .fillMaxWidth()
             .height(148.dp)
+            .semantics {
+                contentDescription = buildString {
+                    append(step.title)
+                    if (step.subtitle.isNotBlank()) append(", ").append(step.subtitle)
+                    if (step.cue != DirectionCue.START && step.cue != DirectionCue.DESTINATION) {
+                        append(", ").append(formatDistance(step.distanceMeters))
+                    }
+                }
+            }
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1144,7 +1183,11 @@ private fun RouteMapView(
         }
     }
 
-    Box(modifier = modifier) {
+    Box(
+        modifier = modifier.semantics {
+            contentDescription = "경로 지도, 현재 위치와 목적지를 표시합니다"
+        }
+    ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->

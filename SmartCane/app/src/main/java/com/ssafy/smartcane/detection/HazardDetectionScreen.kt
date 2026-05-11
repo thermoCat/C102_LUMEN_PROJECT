@@ -40,6 +40,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -126,6 +130,9 @@ fun HazardDetectionScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(420.dp)
+                    .semantics {
+                        contentDescription = "카메라 미리보기와 위험물 감지 영역"
+                    }
                     .background(Color.Black, RoundedCornerShape(8.dp))
             ) {
                 if (hasPermission && runner != null) {
@@ -257,7 +264,11 @@ fun HazardDetectionScreen(
                 text = "최근 감지: ${lastDetection ?: "-"}",
                 color = Color(0xFFB0BEC5),
                 fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp
+                fontSize = 13.sp,
+                modifier = Modifier.semantics {
+                    liveRegion = LiveRegionMode.Polite
+                    contentDescription = "최근 감지 결과 ${lastDetection ?: "없음"}"
+                }
             )
 
             Spacer(Modifier.height(8.dp))
