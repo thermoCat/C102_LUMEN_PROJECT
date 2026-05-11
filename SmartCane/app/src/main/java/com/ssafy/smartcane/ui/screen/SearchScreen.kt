@@ -3,6 +3,7 @@
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
@@ -112,7 +113,18 @@ import com.ssafy.smartcane.ui.theme.NavLightGray
 import com.ssafy.smartcane.ui.theme.NavYellow
 
 private enum class SearchSub { Main, VoiceReady, VoiceListening, Results }
+private const val SEARCH_TAG = "SearchScreen"
 private const val NEARBY_SEARCH_TAG = "NearbySearch"
+private val PREFERRED_RECOGNITION_SERVICES = listOf(
+    ComponentName(
+        "com.google.android.googlequicksearchbox",
+        "com.google.android.voicesearch.serviceapi.GoogleRecognitionService"
+    ),
+    ComponentName(
+        "com.samsung.android.bixby.agent",
+        "com.samsung.android.bixby.agent.mainui.voiceinteraction.RecognitionServiceTrampoline"
+    )
+)
 
 private fun voiceSearchIntent(context: android.content.Context): Intent =
     Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -124,11 +136,37 @@ private fun voiceSearchIntent(context: android.content.Context): Intent =
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         putExtra(RecognizerIntent.EXTRA_PROMPT, "음성으로 검색")
         putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 6_000L)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2_000L)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1_500L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1_500L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_000L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
         putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
     }
+
+private fun createSpeechRecognizer(context: android.content.Context): SpeechRecognizer? {
+    if (!SpeechRecognizer.isRecognitionAvailable(context)) return null
+
+    val packageManager = context.packageManager
+    PREFERRED_RECOGNITION_SERVICES.forEach { component ->
+        val serviceInfo = runCatching {
+            packageManager.getServiceInfo(component, PackageManager.GET_META_DATA)
+        }.getOrNull()
+        if (serviceInfo?.enabled == true) {
+            return runCatching {
+                Log.d(SEARCH_TAG, "Creating recognizer with $component")
+                SpeechRecognizer.createSpeechRecognizer(context, component)
+            }.onFailure {
+                Log.d(SEARCH_TAG, "Failed to create recognizer with $component: ${it.message}")
+            }.getOrNull()
+        }
+    }
+
+    return runCatching {
+        Log.d(SEARCH_TAG, "Creating default recognizer")
+        SpeechRecognizer.createSpeechRecognizer(context)
+    }.onFailure {
+        Log.d(SEARCH_TAG, "Failed to create default recognizer: ${it.message}")
+    }.getOrNull()
+}
 
 @Composable
 private fun SpeechRecognizerEffect(
@@ -141,16 +179,13 @@ private fun SpeechRecognizerEffect(
 ) {
     val context = LocalContext.current
     val recognizer = remember {
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            runCatching { SpeechRecognizer.createSpeechRecognizer(context) }.getOrNull()
-        } else {
-            null
-        }
+        createSpeechRecognizer(context)
     }
     val onReadyState = rememberUpdatedState(onReady)
     val onResultState = rememberUpdatedState(onResult)
     val onErrorState = rememberUpdatedState(onError)
     val onRmsChangedState = rememberUpdatedState(onRmsChanged)
+    var lastStartedToken by remember { mutableStateOf(-1) }
 
     DisposableEffect(recognizer) {
         if (recognizer == null) {
@@ -159,7 +194,16 @@ private fun SpeechRecognizerEffect(
 
         val listener = object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
+                Log.d(SEARCH_TAG, "Voice ready")
                 onReadyState.value()
+            }
+
+            override fun onBeginningOfSpeech() {
+                Log.d(SEARCH_TAG, "Voice beginning")
+            }
+
+            override fun onEndOfSpeech() {
+                Log.d(SEARCH_TAG, "Voice end")
             }
 
             override fun onResults(results: Bundle?) {
@@ -176,12 +220,11 @@ private fun SpeechRecognizerEffect(
             }
 
             override fun onError(error: Int) {
+                Log.d(SEARCH_TAG, "Voice listener error=$error")
                 onErrorState.value(error)
             }
 
-            override fun onBeginningOfSpeech() = Unit
             override fun onBufferReceived(buffer: ByteArray?) = Unit
-            override fun onEndOfSpeech() = Unit
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
             override fun onPartialResults(partialResults: Bundle?) = Unit
             override fun onRmsChanged(rmsdB: Float) {
@@ -197,14 +240,21 @@ private fun SpeechRecognizerEffect(
     }
 
     LaunchedEffect(active, startToken, recognizer) {
-        if (recognizer == null) return@LaunchedEffect
+        if (recognizer == null) {
+            if (active) onErrorState.value(SpeechRecognizer.ERROR_CLIENT)
+            return@LaunchedEffect
+        }
         if (!active) {
             runCatching { recognizer.cancel() }
             return@LaunchedEffect
         }
+        if (lastStartedToken == startToken) {
+            return@LaunchedEffect
+        }
+        lastStartedToken = startToken
 
-        runCatching { recognizer.cancel() }
         val intent = voiceSearchIntent(context)
+        Log.d(SEARCH_TAG, "Voice startListening")
         runCatching { recognizer.startListening(intent) }
             .onFailure { onErrorState.value(SpeechRecognizer.ERROR_CLIENT) }
     }
@@ -386,13 +436,21 @@ fun SearchScreen(
         startToken = voiceStartToken,
         onReady = { sub = SearchSub.VoiceListening },
         onResult = { spokenText ->
+            Log.d(SEARCH_TAG, "Voice result: $spokenText")
             query = spokenText
             queryFromVoice = true
             sub = SearchSub.Results
         },
-        onError = {
+        onError = { error ->
+            Log.d(SEARCH_TAG, "Voice recognizer error=$error")
             voiceRmsDb = 0f
             sub = SearchSub.Main
+            if (error != SpeechRecognizer.ERROR_NO_MATCH &&
+                error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+            ) {
+                runCatching { externalVoiceLauncher.launch(voiceSearchIntent(context)) }
+                    .onFailure { Log.d(SEARCH_TAG, "External voice fallback failed: ${it.message}") }
+            }
         },
         onRmsChanged = { rmsDb -> voiceRmsDb = rmsDb }
     )
@@ -786,7 +844,7 @@ private fun SearchBrowseView(
                         HorizontalDivider(
                             color = NavDivider,
                             thickness = 0.5.dp,
-                            modifier = Modifier.padding(horizontal = 30.dp)
+                            modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
                 }
