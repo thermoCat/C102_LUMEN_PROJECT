@@ -126,9 +126,16 @@ enum class TrafficDetectionLabel {
     RED_LIGHT
 }
 
+enum class IntersectionContext {
+    NONE,             // 교차로 아님 (일반 횡단보도)
+    T_JUNCTION,       // 삼거리
+    INTERSECTION      // 사거리/교차로
+}
+
 data class TrafficSceneEvidence(
     val status: TrafficSceneStatus,
-    val detections: List<TrafficDetection>
+    val detections: List<TrafficDetection>,
+    val intersectionContext: IntersectionContext = IntersectionContext.NONE
 )
 
 enum class SemanticDistanceZone {

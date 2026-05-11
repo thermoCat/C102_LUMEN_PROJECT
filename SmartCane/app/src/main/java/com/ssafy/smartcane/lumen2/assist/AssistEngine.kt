@@ -15,6 +15,8 @@ class AssistEngine {
     private var candidateSince = 0L
     private var lastSpokenAt = 0L
     private var lastVibratedAt = 0L
+    private var lastIntersectionSpokenAt = 0L
+    private val INTERSECTION_SPEECH_COOLDOWN = 8000L
     private val semanticStabilizer = AssistSemanticStabilizer()
     private val curbBoundaryStabilizer = AssistCurbBoundaryStabilizer()
     private val trafficStabilizer = AssistTrafficStabilizer()
@@ -49,9 +51,17 @@ class AssistEngine {
         }
         val visualization = AssistVisualizationBuilder.build(frame, depthLayer, frontEvidence, curbBoundary, stableTrafficEvidence)
 
-        val speech = commandSpeech(command)
-        val shouldSpeak = speech != null && shouldSpeak(state, changed, nowMillis)
-        if (shouldSpeak) lastSpokenAt = nowMillis
+        // 교차로/횡단보도 진입 안내 (일반 AssistCommand 음성보다 우선)
+        val intersectionSpeech = intersectionSpeech(stableTrafficEvidence, nowMillis)
+        if (intersectionSpeech != null) lastIntersectionSpokenAt = nowMillis
+
+        val commandSpeechText = commandSpeech(command)
+        val speech = intersectionSpeech ?: commandSpeechText
+        val shouldSpeak = speech != null && (
+            intersectionSpeech != null ||
+            (commandSpeechText != null && shouldSpeak(state, changed, nowMillis))
+        )
+        if (shouldSpeak && intersectionSpeech == null) lastSpokenAt = nowMillis
 
         val shouldVibrate = state != AssistState.NORMAL && shouldVibrate(state, changed, nowMillis)
         if (shouldVibrate) lastVibratedAt = nowMillis
@@ -394,6 +404,32 @@ class AssistEngine {
             awareness.sideHintReason,
             awareness.depthReason
         ).joinToString(" / ")
+    }
+
+    private fun intersectionSpeech(evidence: TrafficSceneEvidence, now: Long): String? {
+        val hasCrosswalk = evidence.status == TrafficSceneStatus.CROSSWALK ||
+                           evidence.status == TrafficSceneStatus.GREEN_LIGHT ||
+                           evidence.status == TrafficSceneStatus.RED_LIGHT
+        if (!hasCrosswalk) return null
+        if (now - lastIntersectionSpokenAt < INTERSECTION_SPEECH_COOLDOWN) return null
+
+        return when (evidence.intersectionContext) {
+            IntersectionContext.INTERSECTION -> when (evidence.status) {
+                TrafficSceneStatus.GREEN_LIGHT -> "교차로입니다. 초록불입니다. 건너세요."
+                TrafficSceneStatus.RED_LIGHT   -> "교차로입니다. 빨간불입니다. 대기하세요."
+                else                           -> "교차로 횡단보도입니다."
+            }
+            IntersectionContext.T_JUNCTION -> when (evidence.status) {
+                TrafficSceneStatus.GREEN_LIGHT -> "삼거리입니다. 초록불입니다. 건너세요."
+                TrafficSceneStatus.RED_LIGHT   -> "삼거리입니다. 빨간불입니다. 대기하세요."
+                else                           -> "삼거리 횡단보도입니다."
+            }
+            IntersectionContext.NONE -> when (evidence.status) {
+                TrafficSceneStatus.GREEN_LIGHT -> "횡단보도입니다. 초록불입니다. 건너세요."
+                TrafficSceneStatus.RED_LIGHT   -> "횡단보도입니다. 빨간불입니다. 대기하세요."
+                else                           -> "횡단보도가 감지됩니다."
+            }
+        }
     }
 
     private fun commandSpeech(command: AssistCommand): String? {

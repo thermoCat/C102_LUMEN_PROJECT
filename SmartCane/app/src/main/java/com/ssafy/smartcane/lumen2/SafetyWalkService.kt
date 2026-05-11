@@ -83,6 +83,10 @@ class SafetyWalkService : Service() {
 
     private lateinit var assistEngine: AssistEngine
     private lateinit var proximityController: ProximityVibrationController
+    private var tts: android.speech.tts.TextToSpeech? = null
+    private var ttsReady = false
+    @Volatile private var lastCrosswalkSpokenAt = 0L
+    private val CROSSWALK_TTS_COOLDOWN = 8000L
 
     // 실시간 GPS + 서버 위치 전송
     private var locationManager: LocationManager? = null
@@ -92,6 +96,11 @@ class SafetyWalkService : Service() {
         override fun onLocationChanged(loc: Location) {
             // 위험 신고용 로컬 캐시만 갱신 — 서버 전송은 별도 루프가 담당
             com.ssafy.smartcane.util.LocationHelper.updateLiveLocation(loc.latitude, loc.longitude)
+            // 교차로 노드 캐시 업데이트 (150m 이탈 시 재요청)
+            hazardScope.launch {
+                com.ssafy.smartcane.intersection.IntersectionDetector
+                    .updateIfNeeded(loc.latitude, loc.longitude)
+            }
         }
         @Deprecated("Deprecated in Java")
         override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
@@ -177,6 +186,14 @@ class SafetyWalkService : Service() {
         proximityController = ProximityVibrationController(send = { cmd -> ble.sendCommand(cmd) })
         assistEngine = AssistEngine()
 
+        tts = android.speech.tts.TextToSpeech(this) { status ->
+            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                tts?.language = java.util.Locale.KOREAN
+                tts?.setSpeechRate(1.0f)
+                ttsReady = true
+            }
+        }
+
         // 실시간 GPS 구독 — getLastKnownLocation 의 오래된 캐시 문제 해결
         startGpsUpdates()
 
@@ -193,9 +210,33 @@ class SafetyWalkService : Service() {
         tfliteRunner?.let { runner ->
             hazardAnalyzer = HazardDetectionAnalyzer(this, hazardScope) { bitmap ->
                 com.ssafy.smartcane.util.AppLogger.log(TAG, "detect 람다 호출 bitmap=${bitmap.width}x${bitmap.height}")
-                // 0.3 낮춰서 저신뢰 탐지도 잡되, HazardType에 있는 클래스만 필터 후 최고 confidence 선택.
-                // person/car 같은 비위험 클래스가 더 높은 confidence여도 무시됨.
                 val all = runner.detectAll(bitmap, 0.3f)
+
+                // 횡단보도 감지 시 교차로 여부 판단 + TTS 안내
+                val crosswalk = all.firstOrNull { it.label == "crosswalk" && it.confidence >= 0.35f }
+                if (crosswalk != null) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastCrosswalkSpokenAt > CROSSWALK_TTS_COOLDOWN) {
+                        val loc = com.ssafy.smartcane.util.LocationHelper.getLastKnownLocation(this@SafetyWalkService)
+                        if (loc != null) {
+                            val nodeCount = com.ssafy.smartcane.intersection.IntersectionDetector
+                                .nearbyNodeCount(loc.first, loc.second)
+                            val speech = when {
+                                nodeCount >= 3 -> "교차로 횡단보도입니다."
+                                nodeCount == 2 -> "삼거리 횡단보도입니다."
+                                else           -> "횡단보도가 감지됩니다."
+                            }
+                            com.ssafy.smartcane.util.AppLogger.log(TAG,
+                                "횡단보도 감지 (${(crosswalk.confidence*100).toInt()}%) → $speech (노드 ${nodeCount}개)")
+                            if (ttsReady) {
+                                tts?.speak(speech, android.speech.tts.TextToSpeech.QUEUE_ADD, null, "crosswalk-${now}")
+                                lastCrosswalkSpokenAt = now
+                            }
+                        }
+                    }
+                }
+
+                // 위험 클래스 필터 후 최고 confidence 선택
                 val result = all
                     .filter { HazardType.fromTfliteLabel(it.label) != null }
                     .maxByOrNull { it.confidence }
@@ -233,6 +274,8 @@ class SafetyWalkService : Service() {
         runCatching { stopGpsUpdates() }   // GPS 정리 + 위치추적 종료 (hazardScope 취소 전)
         hazardScope.cancel()
         runCatching { proximityController.reset() }
+
+        tts?.stop(); tts?.shutdown(); tts = null
 
         // TFLiteRunner.close() 는 추론 완료 후 executor 스레드에서 호출 (크래시 방지)
         tfliteExecutor.execute { runCatching { tfliteRunner?.close() } }
