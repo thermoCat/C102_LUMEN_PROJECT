@@ -173,10 +173,9 @@
   </select>
   <button onclick="loadHazards()">새로고침</button>
   <button id="btn-sidewalk" class="toggle-btn off" onclick="toggleLayer('sidewalk')">인도 OFF</button>
-  <button id="btn-crosswalk" class="toggle-btn off" onclick="toggleLayer('crosswalk')">SafeMap 횡단보도 OFF</button>
-  <button id="btn-db-crosswalk" class="toggle-btn off" onclick="toggleDbCrosswalks()">DB 횡단보도 OFF</button>
+  <button id="btn-crosswalk" class="toggle-btn" onclick="toggleLayer('crosswalk')">횡단보도 ON</button>
   <button id="btn-nodes" class="toggle-btn off" onclick="toggleNodes()">교차로 OFF</button>
-  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명 &nbsp;|&nbsp; 교차로: <span id="node-count">0</span>개 &nbsp;|&nbsp; 횡단보도: <span id="crosswalk-count">0</span>개</div>
+  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명 &nbsp;|&nbsp; 교차로: <span id="node-count">0</span>개</div>
   <span id="sse-status">SSE 연결 중...</span>
 </div>
 
@@ -476,74 +475,15 @@ function showDetail(items) {
   panel.style.display = 'flex';
 }
 
-let map, sidewalkLayer, crosswalkLayer, dbCrosswalkLayer;
-const dbCrosswalkSource = new ol.source.Vector();
+let map, sidewalkLayer, crosswalkLayer;
 
 function toggleLayer(name) {
   const layer = name === 'sidewalk' ? sidewalkLayer : crosswalkLayer;
   const btn = document.getElementById('btn-' + name);
   const visible = !layer.getVisible();
   layer.setVisible(visible);
-  btn.textContent = (name === 'sidewalk' ? '인도 ' : 'SafeMap 횡단보도 ') + (visible ? 'ON' : 'OFF');
+  btn.textContent = (name === 'sidewalk' ? '인도 ' : '횡단보도 ') + (visible ? 'ON' : 'OFF');
   btn.classList.toggle('off', !visible);
-}
-
-let dbCrosswalkVisible = false;
-let dbCrosswalkFetching = false;
-let dbCrosswalkDebounceTimer = null;
-
-function toggleDbCrosswalks() {
-  dbCrosswalkVisible = !dbCrosswalkVisible;
-  dbCrosswalkLayer.setVisible(dbCrosswalkVisible);
-  const btn = document.getElementById('btn-db-crosswalk');
-  btn.textContent = 'DB 횡단보도 ' + (dbCrosswalkVisible ? 'ON' : 'OFF');
-  btn.classList.toggle('off', !dbCrosswalkVisible);
-  if (dbCrosswalkVisible) loadDbCrosswalks();
-  else {
-    dbCrosswalkSource.clear();
-    document.getElementById('crosswalk-count').textContent = '0';
-  }
-}
-
-function loadDbCrosswalks() {
-  if (!dbCrosswalkVisible || dbCrosswalkFetching) return;
-  const size = map.getSize();
-  if (!size || size[0] === 0) return;
-  const extent = ol.proj.transformExtent(
-    map.getView().calculateExtent(size), 'EPSG:3857', 'EPSG:4326'
-  );
-  dbCrosswalkFetching = true;
-  fetch(`/api/road/crosswalks?minLng=${extent[0]}&minLat=${extent[1]}&maxLng=${extent[2]}&maxLat=${extent[3]}&limit=2000`)
-    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(geojson => {
-      dbCrosswalkSource.clear();
-      geojson.features.forEach(f => {
-        const [lng, lat] = f.geometry.coordinates;
-        const feature = new ol.Feature({
-          geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat])),
-          crosswalkProps: f.properties
-        });
-        feature.setStyle(new ol.style.Style({
-          image: new ol.style.RegularShape({
-            points: 4,
-            radius: 6,
-            angle: Math.PI / 4,
-            fill: new ol.style.Fill({ color: '#FFD600' }),
-            stroke: new ol.style.Stroke({ color: '#fff', width: 1.5 })
-          })
-        }));
-        dbCrosswalkSource.addFeature(feature);
-      });
-      document.getElementById('crosswalk-count').textContent = geojson.totalCount;
-    })
-    .catch(e => console.error('횡단보도 로드 실패:', e))
-    .finally(() => { dbCrosswalkFetching = false; });
-}
-
-function loadDbCrosswalksDebounced() {
-  if (!dbCrosswalkVisible) return;
-  clearTimeout(dbCrosswalkDebounceTimer);
-  dbCrosswalkDebounceTimer = setTimeout(loadDbCrosswalks, 400);
 }
 
 function makeStyle(type, count) {
@@ -642,7 +582,7 @@ function loadHazardsDebounced() {
     });
 
     crosswalkLayer = new ol.layer.Tile({
-      visible: false,
+      visible: true,
       opacity: 0.8,
       source: new ol.source.TileWMS({
         url: '/api/proxy/safemap',
@@ -656,14 +596,9 @@ function loadHazardsDebounced() {
       })
     });
 
-    dbCrosswalkLayer = new ol.layer.Vector({
-      source: dbCrosswalkSource,
-      visible: false
-    });
-
     map = new ol.Map({
       target: 'map',
-      layers: [osmLayer, sidewalkLayer, crosswalkLayer, dbCrosswalkLayer, nodeLayer, hazardLayer, walkerLayer],
+      layers: [osmLayer, sidewalkLayer, crosswalkLayer, nodeLayer, hazardLayer, walkerLayer],
       view: new ol.View({
         center: ol.proj.fromLonLat([126.8099, 35.2024]),
         zoom: 16
@@ -726,7 +661,6 @@ function loadHazardsDebounced() {
 
     map.on('moveend', loadHazardsDebounced);
     map.on('moveend', loadNodesDebounced);
-    map.on('moveend', loadDbCrosswalksDebounced);
 
     // 맵이 완전히 렌더된 후 최초 1회 로드 (getSize()가 [0,0]인 타이밍 버그 방지)
     map.once('rendercomplete', loadHazards);
