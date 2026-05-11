@@ -19,8 +19,11 @@ import com.ssafy.smartcane.lumen2.assist.AssistFeedbackController
 import com.ssafy.smartcane.lumen2.assist.AssistOverlayRenderer
 import com.ssafy.smartcane.lumen2.assist.AssistSignalTimerReader
 import com.ssafy.smartcane.lumen2.assist.AssistTrafficDetector
+import com.ssafy.smartcane.intersection.IntersectionDetector
+import com.ssafy.smartcane.lumen2.assist.IntersectionContext
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneEvidence
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneStatus
+import com.ssafy.smartcane.util.LocationHelper
 import com.ssafy.smartcane.lumen2.ar.ArCoreFrameSource
 import com.ssafy.smartcane.lumen2.ar.ArFrameData
 import com.ssafy.smartcane.lumen2.ble.ProximityVibrationController
@@ -139,7 +142,25 @@ class SafetyWalkActivity : ComponentActivity() {
             try {
                 val detected   = detector.analyze(bitmap)
                 val withTimers = assistSignalTimerReader.attachTimers(bitmap, detected)
-                latestTrafficEvidence = withTimers.scaled(bitmap, width, height)
+                val scaled     = withTimers.scaled(bitmap, width, height)
+
+                // 횡단보도 감지 시 교차로 컨텍스트 주입
+                val intersectionCtx = if (
+                    scaled.status == TrafficSceneStatus.CROSSWALK ||
+                    scaled.status == TrafficSceneStatus.GREEN_LIGHT ||
+                    scaled.status == TrafficSceneStatus.RED_LIGHT
+                ) {
+                    val loc = LocationHelper.getLastKnownLocation(this@SafetyWalkActivity)
+                    if (loc != null) {
+                        when (IntersectionDetector.nearbyNodeCount(loc.first, loc.second)) {
+                            0, 1 -> IntersectionContext.NONE
+                            2    -> IntersectionContext.T_JUNCTION
+                            else -> IntersectionContext.INTERSECTION
+                        }
+                    } else IntersectionContext.NONE
+                } else IntersectionContext.NONE
+
+                latestTrafficEvidence = scaled.copy(intersectionContext = intersectionCtx)
             } catch (_: Throwable) {
                 latestTrafficEvidence = TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList())
             } finally {
