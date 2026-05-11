@@ -29,7 +29,7 @@ public class CrosswalkController {
     ) {
         String sql = """
                 SELECT id, mgmt_no, lat, lng
-                FROM crosswalks
+                FROM lumen102.crosswalks
                 WHERE lng BETWEEN ? AND ?
                   AND lat BETWEEN ? AND ?
                 LIMIT ?
