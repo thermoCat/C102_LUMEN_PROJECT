@@ -19,8 +19,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,9 +41,9 @@ fun BottomNav(
 ) {
     val items = listOf(
         NavItem(NavTab.Search, "위치 검색", R.drawable.ic_nav_search),
-        NavItem(NavTab.Route, "경로 탐색", R.drawable.ic_nav_route),
+        NavItem(NavTab.Route, "경로 안내", R.drawable.ic_nav_route),
         NavItem(NavTab.Safety, "안전 보행", R.drawable.ic_nav_safety),
-        NavItem(NavTab.Fav, "즐겨 찾기", R.drawable.ic_nav_fav)
+        NavItem(NavTab.Fav, "즐겨찾기", R.drawable.ic_nav_fav)
     )
 
     Column(
@@ -62,7 +65,13 @@ fun BottomNav(
                         .weight(1f)
                         .padding(top = 4.dp, bottom = 24.dp)
                         .clearAndSetSemantics {
-                            contentDescription = if (isActive) "메뉴바 ${item.label} 선택됨" else "메뉴바 ${item.label}"
+                            contentDescription = if (isActive) {
+                                "하단 메뉴 ${item.label}, 선택됨"
+                            } else {
+                                "하단 메뉴 ${item.label}"
+                            }
+                            role = Role.Tab
+                            selected = isActive
                         }
                         .clickable(
                             indication = null,
