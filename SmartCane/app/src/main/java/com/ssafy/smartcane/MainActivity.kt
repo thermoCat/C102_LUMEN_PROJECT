@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SmartCaneTheme {
                 var showBleTest by remember { mutableStateOf(false) }
-                // "test:model_1.tflite" 형식이면 testMode=true
+                // "test:yolo11n_fine_tune.tflite" 형식이면 testMode=true
                 var hazardCamModel by remember { mutableStateOf<String?>(null) }
                 val isTestMode = hazardCamModel?.startsWith("test:") == true
                 val actualModelName = hazardCamModel?.removePrefix("test:") ?: ""

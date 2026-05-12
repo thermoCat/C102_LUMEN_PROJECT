@@ -55,13 +55,13 @@ import com.ssafy.smartcane.ui.theme.AppWhite
 import java.util.concurrent.Executors
 
 /**
- * [testMode] = true  : 신고/쿨다운 없음, 임계값 0.1f, 전체 클래스 bbox 표시 (모델 테스트용)
+ * [testMode] = true  : 신고/쿨다운 없음, 클래스별 임계값, 전체 클래스 bbox 표시 (모델 테스트용)
  * [testMode] = false : HazardDetectionAnalyzer 경유, 자동 신고 활성 (기존 동작)
  */
 @Composable
 fun HazardDetectionScreen(
     onClose: () -> Unit,
-    modelFileName: String = "model_yolo26n.tflite",
+    modelFileName: String = TFLiteRunner.DEFAULT_MODEL_FILE_NAME,
     testMode: Boolean = false
 ) {
     val context = LocalContext.current
@@ -222,7 +222,7 @@ fun HazardDetectionScreen(
                 } else {
                     Text(
                         text = if (!hasPermission) "카메라 권한 필요"
-                        else "model.tflite / labels.txt 가 assets/ 에 없음",
+                        else "${TFLiteRunner.DEFAULT_MODEL_FILE_NAME} / ${TFLiteRunner.DEFAULT_LABELS_FILE_NAME} 가 assets/ 에 없음",
                         color = Color(0xFFB0BEC5),
                         modifier = Modifier.align(Alignment.Center)
                     )
@@ -275,7 +275,7 @@ fun HazardDetectionScreen(
 
             Text(
                 text = if (testMode)
-                    "테스트 모드 — 임계값 0.1, 신고/쿨다운 없음, 전체 클래스 표시"
+                    "테스트 모드 — 클래스별 임계값, 신고/쿨다운 없음, 전체 클래스 표시"
                 else
                     "임계값 ${HazardDetectionAnalyzer.THRESHOLD} 이상 + 같은 타입 ${HazardDetectionAnalyzer.COOLDOWN_MS / 1000}초 쿨다운으로 자동 신고합니다.",
                 color = Color(if (testMode) 0xFF29B6F6 else 0xFF78909C),

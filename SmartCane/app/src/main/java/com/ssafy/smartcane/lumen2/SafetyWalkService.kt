@@ -197,8 +197,8 @@ class SafetyWalkService : Service() {
         // 실시간 GPS 구독 — getLastKnownLocation 의 오래된 캐시 문제 해결
         startGpsUpdates()
 
-        // TFLite 초기화 (model.tflite + labels.txt)
-        tfliteRunner = runCatching { TFLiteRunner(this, "model_yolo26n.tflite") }
+        // TFLite 초기화 (yolo11n_fine_tune.tflite + labels.txt)
+        tfliteRunner = runCatching { TFLiteRunner(this, TFLiteRunner.DEFAULT_MODEL_FILE_NAME) }
             .onFailure {
                 Log.w(TAG, "TFLiteRunner 초기화 실패 — 위험 감지 비활성", it)
                 com.ssafy.smartcane.util.AppLogger.error(TAG, "TFLiteRunner 초기화 실패: ${it.message}")
@@ -210,10 +210,10 @@ class SafetyWalkService : Service() {
         tfliteRunner?.let { runner ->
             hazardAnalyzer = HazardDetectionAnalyzer(this, hazardScope) { bitmap ->
                 com.ssafy.smartcane.util.AppLogger.log(TAG, "detect 람다 호출 bitmap=${bitmap.width}x${bitmap.height}")
-                val all = runner.detectAll(bitmap, 0.3f)
+                val all = runner.detectAll(bitmap)
 
                 // 횡단보도 감지 시 교차로 여부 판단 + TTS 안내
-                val crosswalk = all.firstOrNull { it.label == "crosswalk" && it.confidence >= 0.35f }
+                val crosswalk = all.firstOrNull { it.label == "crosswalk" }
                 if (crosswalk != null) {
                     val now = System.currentTimeMillis()
                     if (now - lastCrosswalkSpokenAt > CROSSWALK_TTS_COOLDOWN) {
@@ -245,7 +245,7 @@ class SafetyWalkService : Service() {
                         val top = all.maxByOrNull { it.confidence }!!
                         com.ssafy.smartcane.util.AppLogger.log(TAG, "위험 클래스 없음 (최고: ${top.label} ${(top.confidence*100).toInt()}%)")
                     } else {
-                        com.ssafy.smartcane.util.AppLogger.log(TAG, "감지 없음 (0.3 미달)")
+                        com.ssafy.smartcane.util.AppLogger.log(TAG, "감지 없음 (클래스별 threshold 미달)")
                     }
                 } else {
                     com.ssafy.smartcane.util.AppLogger.log(TAG, "위험 감지: ${result.label} ${(result.confidence*100).toInt()}%")

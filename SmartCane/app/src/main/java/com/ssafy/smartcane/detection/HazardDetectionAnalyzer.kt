@@ -27,7 +27,7 @@ class HazardDetectionAnalyzer(
 
     companion object {
         private const val TAG = "HazardDetect"
-        const val THRESHOLD = 0.5f
+        const val THRESHOLD = 0.10f
         const val COOLDOWN_MS = 5_000L
     }
 
