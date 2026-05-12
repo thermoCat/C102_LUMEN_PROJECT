@@ -8,6 +8,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -132,7 +133,10 @@ private enum class RouteSub { Main, Simple, Navigation }
 private const val USE_DUMMY_ROUTE_MAP = false
 
 private const val ROUTE_TAG = "RouteScreen"
-private const val MAX_LAST_KNOWN_AGE_MS = 5 * 60 * 1000L
+private const val MAX_LIVE_LOCATION_AGE_MS = 10_000L
+private const val MAX_LAST_KNOWN_AGE_MS = 30_000L
+private const val MAX_ROUTE_LOCATION_ACCURACY_METERS = 30f
+private const val MAX_FALLBACK_ROUTE_LOCATION_ACCURACY_METERS = 120f
 private const val REROUTE_COOLDOWN_MS = 30_000L
 
 @Composable
@@ -186,12 +190,12 @@ fun RouteScreen(
                 ROUTE_TAG,
                 "Location update lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, time=${location.time}"
             )
-            if (location.isUsableRouteOrigin()) {
+            if (isRouteLocationWithinServiceBounds(location, MAX_LIVE_LOCATION_AGE_MS)) {
                 currentLocation = locationSmoother.smooth(location)
             } else {
                 Log.d(
                     ROUTE_TAG,
-                    "Ignored non-Korea route origin lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}"
+                    "Ignored low-quality route origin provider=${location.provider}, lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, age=${location.ageMillis()}"
                 )
             }
         }
@@ -330,14 +334,69 @@ private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-private fun Location.isInKorea(): Boolean =
-    latitude in 33.0..39.5 && longitude in 124.0..132.0
+private fun isInKorea(location: Location): Boolean =
+    location.latitude in 33.0..39.5 && location.longitude in 124.0..132.0
 
-private fun Location.isUsableRouteOrigin(): Boolean =
-    isInKorea()
+private fun isFreshLocation(location: Location, maxAgeMillis: Long): Boolean {
+    val ageMillis = location.ageMillis() ?: return false
+    return ageMillis in 0L..maxAgeMillis
+}
 
-private fun Location.isRecentEnough(): Boolean =
-    time <= 0L || System.currentTimeMillis() - time <= MAX_LAST_KNOWN_AGE_MS
+private fun isAccurateLocation(
+    location: Location,
+    maxAccuracyMeters: Float = MAX_ROUTE_LOCATION_ACCURACY_METERS
+): Boolean =
+    location.hasAccuracy() && location.accuracy <= maxAccuracyMeters
+
+private fun isUsableRouteLocation(location: Location, maxAgeMillis: Long): Boolean =
+    isInKorea(location) &&
+        isFreshLocation(location, maxAgeMillis) &&
+        isAccurateLocation(location)
+
+private fun isFallbackRouteLocation(location: Location, maxAgeMillis: Long): Boolean =
+    location.provider == LocationManager.NETWORK_PROVIDER &&
+        isInKorea(location) &&
+        isFreshLocation(location, maxAgeMillis) &&
+        isAccurateLocation(location, MAX_FALLBACK_ROUTE_LOCATION_ACCURACY_METERS)
+
+private fun isRouteLocationWithinServiceBounds(location: Location, maxAgeMillis: Long): Boolean =
+    isUsableRouteLocation(location, maxAgeMillis) ||
+        isFallbackRouteLocation(location, maxAgeMillis)
+
+private fun isBetterLocation(newLocation: Location, currentBest: Location?): Boolean {
+    if (currentBest == null) return true
+
+    val newProvider = newLocation.provider
+    val currentProvider = currentBest.provider
+    val newIsGps = newProvider == LocationManager.GPS_PROVIDER
+    val currentIsGps = currentProvider == LocationManager.GPS_PROVIDER
+    val currentAgeMillis = currentBest.ageMillis() ?: Long.MAX_VALUE
+    val newAccuracy = newLocation.accuracy
+    val currentAccuracy = currentBest.accuracy
+
+    if (newIsGps && !currentIsGps) return true
+    if (!newIsGps && currentIsGps) {
+        return currentAgeMillis > MAX_LIVE_LOCATION_AGE_MS
+    }
+    if (newAccuracy < currentAccuracy) return true
+
+    val newAgeMillis = newLocation.ageMillis() ?: Long.MAX_VALUE
+    return newAgeMillis + 5_000L < currentAgeMillis &&
+        newAccuracy <= currentAccuracy + 10f
+}
+
+private fun Location.ageMillis(): Long? {
+    val elapsedRealtimeNanos = this.elapsedRealtimeNanos
+    if (elapsedRealtimeNanos > 0L) {
+        val elapsedAgeNanos = SystemClock.elapsedRealtimeNanos() - elapsedRealtimeNanos
+        if (elapsedAgeNanos >= 0L) {
+            return elapsedAgeNanos / 1_000_000L
+        }
+    }
+
+    if (time <= 0L) return null
+    return System.currentTimeMillis() - time
+}
 
 private fun Location.routeOriginKey(destinationLongitude: Double, destinationLatitude: Double): String =
     "${latitude.roundForRoute()},${longitude.roundForRoute()}:${destinationLatitude.roundForRoute()},${destinationLongitude.roundForRoute()}"
@@ -354,8 +413,10 @@ private fun lastKnownLocation(context: Context): Location? {
         .mapNotNull { provider ->
             runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
         }
-        .filter { it.isRecentEnough() && it.isUsableRouteOrigin() }
-        .minByOrNull { if (it.hasAccuracy()) it.accuracy else Float.MAX_VALUE }
+        .filter { isRouteLocationWithinServiceBounds(it, MAX_LAST_KNOWN_AGE_MS) }
+        .fold<Location, Location?>(null) { best, location ->
+            if (isBetterLocation(location, best)) location else best
+        }
 }
 
 @Composable
@@ -1007,7 +1068,7 @@ private fun NavigationRouteHeader(
             },
             label = "NavigationStepSlide"
         ) { stepIndex ->
-            NavigationStepCard(step = safeSteps[stepIndex])
+            NavigationStepCard(step = safeSteps[stepIndex.coerceIn(0, safeSteps.lastIndex)])
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1017,9 +1078,9 @@ private fun NavigationRouteHeader(
             safeSteps.forEachIndexed { index, _ ->
                 Box(
                     modifier = Modifier
-                        .size(if (index == currentStepIndex) 8.dp else 7.dp)
+                        .size(if (index == safeStepIndex) 8.dp else 7.dp)
                         .background(
-                            color = if (index == currentStepIndex) AppWhite else Color(0xFF5E5E5E),
+                            color = if (index == safeStepIndex) AppWhite else Color(0xFF5E5E5E),
                             shape = CircleShape
                         )
                 )
@@ -1484,10 +1545,31 @@ private fun CurrentLocationEffect(
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             ?: return@DisposableEffect onDispose { }
 
-        lastKnownLocation(context)?.let(latestOnLocation)
+        var bestLocation: Location? = null
+        lastKnownLocation(context)?.let { location ->
+            bestLocation = location
+            latestOnLocation(location)
+        }
 
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
+                if (!isRouteLocationWithinServiceBounds(location, MAX_LIVE_LOCATION_AGE_MS)) {
+                    Log.d(
+                        ROUTE_TAG,
+                        "Rejected route location provider=${location.provider}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, age=${location.ageMillis()}"
+                    )
+                    return
+                }
+
+                if (!isBetterLocation(location, bestLocation)) {
+                    Log.d(
+                        ROUTE_TAG,
+                        "Skipped route location provider=${location.provider}, accuracy=${location.accuracy}, currentProvider=${bestLocation?.provider}, currentAccuracy=${bestLocation?.accuracy}"
+                    )
+                    return
+                }
+
+                bestLocation = Location(location)
                 latestOnLocation(location)
             }
 
@@ -1496,7 +1578,7 @@ private fun CurrentLocationEffect(
             override fun onProviderDisabled(provider: String) = Unit
         }
 
-        val providers = runCatching { locationManager.getProviders(true) }.getOrDefault(emptyList())
+        val providers = routeLocationProviders(locationManager)
         providers.forEach { provider ->
             runCatching {
                 locationManager.requestLocationUpdates(provider, 1_500L, 2f, listener)
@@ -1509,3 +1591,13 @@ private fun CurrentLocationEffect(
     }
 }
 
+private fun routeLocationProviders(locationManager: LocationManager): List<String> {
+    val providers = mutableListOf<String>()
+    if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+        providers += LocationManager.GPS_PROVIDER
+    }
+    if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+        providers += LocationManager.NETWORK_PROVIDER
+    }
+    return providers
+}
