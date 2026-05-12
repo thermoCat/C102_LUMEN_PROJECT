@@ -248,6 +248,9 @@ private fun SpeechRecognizerEffect(
             runCatching { recognizer.cancel() }
             return@LaunchedEffect
         }
+        if (startToken <= 0) {
+            return@LaunchedEffect
+        }
         if (lastStartedToken == startToken) {
             return@LaunchedEffect
         }
@@ -446,7 +449,8 @@ fun SearchScreen(
             voiceRmsDb = 0f
             sub = SearchSub.Main
             if (error != SpeechRecognizer.ERROR_NO_MATCH &&
-                error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT &&
+                error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY
             ) {
                 runCatching { externalVoiceLauncher.launch(voiceSearchIntent(context)) }
                     .onFailure { Log.d(SEARCH_TAG, "External voice fallback failed: ${it.message}") }
