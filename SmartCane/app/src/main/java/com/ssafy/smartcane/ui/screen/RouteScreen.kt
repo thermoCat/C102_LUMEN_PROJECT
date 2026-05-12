@@ -103,7 +103,6 @@ import com.ssafy.smartcane.navigation.RouteDeviationStatus
 import com.ssafy.smartcane.navigation.RouteMatchResult
 import com.ssafy.smartcane.navigation.RouteNavigationMatcher
 import com.ssafy.smartcane.network.DirectionCue
-import com.ssafy.smartcane.network.KakaoLocalSearchService
 import com.ssafy.smartcane.network.RouteInstruction
 import com.ssafy.smartcane.network.RoutePoint
 import com.ssafy.smartcane.network.WalkingDirectionsService
@@ -130,7 +129,6 @@ import com.ssafy.smartcane.lumen2.SafetyWalkService
 import com.ssafy.smartcane.util.AppLogger
 
 private enum class RouteSub { Main, Simple, Navigation }
-private const val USE_DUMMY_ROUTE_MAP = false
 
 private const val ROUTE_TAG = "RouteScreen"
 private const val MAX_LIVE_LOCATION_AGE_MS = 10_000L
@@ -147,7 +145,6 @@ fun RouteScreen(
 ) {
     val context = LocalContext.current
     val directionsService = remember { WalkingDirectionsService() }
-    val localSearchService = remember { KakaoLocalSearchService() }
     val locationSmoother = remember(destination?.longitude, destination?.latitude) { LowPassLocationSmoother() }
     val routeScope = rememberCoroutineScope()
     var sub by remember { mutableStateOf(RouteSub.Main) }
@@ -186,17 +183,8 @@ fun RouteScreen(
     CurrentLocationEffect(
         enabled = hasLocationPermission,
         onLocation = { location ->
-            Log.d(
-                ROUTE_TAG,
-                "Location update lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, time=${location.time}"
-            )
             if (isRouteLocationWithinServiceBounds(location, MAX_LIVE_LOCATION_AGE_MS)) {
                 currentLocation = locationSmoother.smooth(location)
-            } else {
-                Log.d(
-                    ROUTE_TAG,
-                    "Ignored low-quality route origin provider=${location.provider}, lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, age=${location.ageMillis()}"
-                )
             }
         }
     )
@@ -212,14 +200,9 @@ fun RouteScreen(
 
         routeJob?.cancel()
         routeJob = routeScope.launch {
-            Log.d(
-                ROUTE_TAG,
-                "Route request ready origin=${origin.longitude},${origin.latitude} destination=$destLongitude,$destLatitude token=$routeRequestToken"
-            )
             isRouteLoading = true
             routeMessage = ""
             routePlan = null
-            Log.d(ROUTE_TAG, "Calling walking directions")
             try {
                 val fetchedRoutePlan = withTimeoutOrNull(12_000L) {
                     directionsService.getWalkingRoute(
@@ -227,12 +210,6 @@ fun RouteScreen(
                         originLatitude = origin.latitude,
                         destinationLongitude = destLongitude,
                         destinationLatitude = destLatitude
-                    )
-                }
-                fetchedRoutePlan?.let { plan ->
-                    Log.d(
-                        ROUTE_TAG,
-                        "Walking route ready key=$routeKey distance=${plan.distanceMeters}m duration=${plan.durationSeconds}s points=${plan.points.size} first=${plan.points.firstOrNull()} last=${plan.points.lastOrNull()}"
                     )
                 }
                 routePlan = fetchedRoutePlan
@@ -243,12 +220,7 @@ fun RouteScreen(
                 if (resolvedOriginName.isBlank()) {
                     resolvedOriginName = "\ud604\uc7ac \uc704\uce58"
                 }
-                Log.d(
-                    ROUTE_TAG,
-                    "Route UI state updated estimated=${fetchedRoutePlan?.durationSeconds}, instructions=${fetchedRoutePlan?.instructions?.size}"
-                )
             } catch (cancelled: CancellationException) {
-                Log.d(ROUTE_TAG, "Route request coroutine cancelled")
                 throw cancelled
             } finally {
                 isRouteLoading = false
@@ -262,10 +234,6 @@ fun RouteScreen(
 
     LaunchedEffect(sub, routeMatch?.status, routeMatch?.distanceToRouteMeters) {
         val match = routeMatch ?: return@LaunchedEffect
-        Log.d(
-            ROUTE_TAG,
-            "Route match status=${match.status} distance=${match.distanceToRouteMeters}m traveled=${match.traveledDistanceMeters}m remaining=${match.remainingDistanceMeters}m"
-        )
         if (sub != RouteSub.Navigation || match.status != RouteDeviationStatus.OFF_ROUTE) return@LaunchedEffect
         val now = System.currentTimeMillis()
         if (now - lastRerouteAt < REROUTE_COOLDOWN_MS) return@LaunchedEffect
@@ -1192,16 +1160,6 @@ private fun RouteMapView(
     currentFocusRequest: Int,
     modifier: Modifier = Modifier
 ) {
-    if (USE_DUMMY_ROUTE_MAP) {
-        DummyRouteMap(
-            routePoints = routePoints,
-            currentLocation = currentLocation,
-            destination = destination,
-            modifier = modifier
-        )
-        return
-    }
-
     if (BuildConfig.KAKAO_NATIVE_APP_KEY.isBlank()) {
         DummyRouteMap(
             routePoints = routePoints,
@@ -1554,18 +1512,10 @@ private fun CurrentLocationEffect(
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 if (!isRouteLocationWithinServiceBounds(location, MAX_LIVE_LOCATION_AGE_MS)) {
-                    Log.d(
-                        ROUTE_TAG,
-                        "Rejected route location provider=${location.provider}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, age=${location.ageMillis()}"
-                    )
                     return
                 }
 
                 if (!isBetterLocation(location, bestLocation)) {
-                    Log.d(
-                        ROUTE_TAG,
-                        "Skipped route location provider=${location.provider}, accuracy=${location.accuracy}, currentProvider=${bestLocation?.provider}, currentAccuracy=${bestLocation?.accuracy}"
-                    )
                     return
                 }
 

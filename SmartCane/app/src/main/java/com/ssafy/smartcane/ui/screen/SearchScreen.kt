@@ -13,7 +13,6 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -113,8 +112,6 @@ import com.ssafy.smartcane.ui.theme.NavLightGray
 import com.ssafy.smartcane.ui.theme.NavYellow
 
 private enum class SearchSub { Main, VoiceReady, VoiceListening, Results }
-private const val SEARCH_TAG = "SearchScreen"
-private const val NEARBY_SEARCH_TAG = "NearbySearch"
 private val PREFERRED_RECOGNITION_SERVICES = listOf(
     ComponentName(
         "com.google.android.googlequicksearchbox",
@@ -152,19 +149,13 @@ private fun createSpeechRecognizer(context: android.content.Context): SpeechReco
         }.getOrNull()
         if (serviceInfo?.enabled == true) {
             return runCatching {
-                Log.d(SEARCH_TAG, "Creating recognizer with $component")
                 SpeechRecognizer.createSpeechRecognizer(context, component)
-            }.onFailure {
-                Log.d(SEARCH_TAG, "Failed to create recognizer with $component: ${it.message}")
             }.getOrNull()
         }
     }
 
     return runCatching {
-        Log.d(SEARCH_TAG, "Creating default recognizer")
         SpeechRecognizer.createSpeechRecognizer(context)
-    }.onFailure {
-        Log.d(SEARCH_TAG, "Failed to create default recognizer: ${it.message}")
     }.getOrNull()
 }
 
@@ -194,17 +185,12 @@ private fun SpeechRecognizerEffect(
 
         val listener = object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                Log.d(SEARCH_TAG, "Voice ready")
                 onReadyState.value()
             }
 
-            override fun onBeginningOfSpeech() {
-                Log.d(SEARCH_TAG, "Voice beginning")
-            }
+            override fun onBeginningOfSpeech() = Unit
 
-            override fun onEndOfSpeech() {
-                Log.d(SEARCH_TAG, "Voice end")
-            }
+            override fun onEndOfSpeech() = Unit
 
             override fun onResults(results: Bundle?) {
                 val spokenText = results
@@ -220,7 +206,6 @@ private fun SpeechRecognizerEffect(
             }
 
             override fun onError(error: Int) {
-                Log.d(SEARCH_TAG, "Voice listener error=$error")
                 onErrorState.value(error)
             }
 
@@ -257,7 +242,6 @@ private fun SpeechRecognizerEffect(
         lastStartedToken = startToken
 
         val intent = voiceSearchIntent(context)
-        Log.d(SEARCH_TAG, "Voice startListening")
         runCatching { recognizer.startListening(intent) }
             .onFailure { onErrorState.value(SpeechRecognizer.ERROR_CLIENT) }
     }
@@ -397,12 +381,10 @@ fun SearchScreen(
         }
 
         val loc = currentLocation ?: return@LaunchedEffect
-        Log.d(NEARBY_SEARCH_TAG, "nearby search lat=${loc.latitude} lng=${loc.longitude}")
         nearbyPlaces = kakaoLocalSearchService.searchNearbyAttractions(
             longitude = loc.longitude,
             latitude = loc.latitude
         )
-        Log.d(NEARBY_SEARCH_TAG, "nearby result count=${nearbyPlaces.size}")
     }
 
     LaunchedEffect(sub, query) {
@@ -439,13 +421,11 @@ fun SearchScreen(
         startToken = voiceStartToken,
         onReady = { sub = SearchSub.VoiceListening },
         onResult = { spokenText ->
-            Log.d(SEARCH_TAG, "Voice result: $spokenText")
             query = spokenText
             queryFromVoice = true
             sub = SearchSub.Results
         },
         onError = { error ->
-            Log.d(SEARCH_TAG, "Voice recognizer error=$error")
             voiceRmsDb = 0f
             sub = SearchSub.Main
             if (error != SpeechRecognizer.ERROR_NO_MATCH &&
@@ -453,7 +433,6 @@ fun SearchScreen(
                 error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY
             ) {
                 runCatching { externalVoiceLauncher.launch(voiceSearchIntent(context)) }
-                    .onFailure { Log.d(SEARCH_TAG, "External voice fallback failed: ${it.message}") }
             }
         },
         onRmsChanged = { rmsDb -> voiceRmsDb = rmsDb }
@@ -526,10 +505,6 @@ private fun NearbyLocationEffect(
 
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
-                Log.d(
-                    NEARBY_SEARCH_TAG,
-                    "location update lat=${location.latitude}, lng=${location.longitude}, provider=${location.provider}"
-                )
                 latestOnLocation(location)
             }
 
@@ -794,7 +769,7 @@ private fun SearchBrowseView(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
                                 ) { onSelect(result) }
-                                .padding(horizontal = 30.dp)
+                                .padding(horizontal = 20.dp)
                                 .padding(top = if (index == 0) 7.dp else 14.dp, bottom = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -848,7 +823,7 @@ private fun SearchBrowseView(
                         HorizontalDivider(
                             color = NavDivider,
                             thickness = 0.5.dp,
-                            modifier = Modifier.padding(horizontal = 20.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp)
                         )
                     }
                 }
