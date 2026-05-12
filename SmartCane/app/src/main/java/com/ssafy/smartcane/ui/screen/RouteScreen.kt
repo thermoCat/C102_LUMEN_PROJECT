@@ -98,6 +98,7 @@ import com.kakao.vectormap.route.RouteLineStylesSet
 import com.ssafy.smartcane.BuildConfig
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.data.model.RouteDestination
+import com.ssafy.smartcane.navigation.HeadingProvider
 import com.ssafy.smartcane.navigation.LowPassLocationSmoother
 import com.ssafy.smartcane.navigation.RouteDeviationStatus
 import com.ssafy.smartcane.navigation.RouteMatchResult
@@ -157,6 +158,7 @@ fun RouteScreen(
     var isRouteLoading by remember { mutableStateOf(false) }
     var routeMessage by remember { mutableStateOf("") }
     var hasLocationPermission by remember { mutableStateOf(hasLocationPermission(context)) }
+    var headingDegrees by remember { mutableStateOf<Float?>(null) }
     var requestedRouteKey by remember(destination?.longitude, destination?.latitude) { mutableStateOf("") }
     var routeRequestToken by remember(destination?.longitude, destination?.latitude) { mutableStateOf(0) }
     var handledRouteRequestToken by remember(destination?.longitude, destination?.latitude) { mutableStateOf(-1) }
@@ -198,6 +200,14 @@ fun RouteScreen(
                     "Ignored low-quality route origin provider=${location.provider}, lat=${location.latitude}, lng=${location.longitude}, accuracy=${if (location.hasAccuracy()) location.accuracy else null}, age=${location.ageMillis()}"
                 )
             }
+        }
+    )
+
+    HeadingEffect(
+        enabled = true,
+        onHeading = { heading ->
+            headingDegrees = heading
+            Log.d(ROUTE_TAG, "Heading update degrees=${String.format(Locale.US, "%.1f", heading)}")
         }
     )
 
@@ -1527,6 +1537,33 @@ private fun DirectionCue.routeIconRes(): Int =
         DirectionCue.DESTINATION -> R.drawable.ic_route_destination
         DirectionCue.STRAIGHT -> R.drawable.ic_route_straight
     }
+
+@Composable
+private fun HeadingEffect(
+    enabled: Boolean,
+    onHeading: (Float) -> Unit
+) {
+    val context = LocalContext.current
+    val latestOnHeading by rememberUpdatedState(onHeading)
+
+    DisposableEffect(enabled, context) {
+        if (!enabled) {
+            return@DisposableEffect onDispose { }
+        }
+
+        val provider = HeadingProvider(context) { heading ->
+            latestOnHeading(heading)
+        }
+        val started = provider.start()
+        if (!started) {
+            Log.w(ROUTE_TAG, "Heading sensor unavailable")
+        }
+
+        onDispose {
+            provider.stop()
+        }
+    }
+}
 
 @Composable
 @SuppressLint("MissingPermission")
