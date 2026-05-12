@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.SmartCaneApplication
 import com.ssafy.smartcane.ble.BleNusManager
+import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.lumen2.assist.AssistEngine
 import com.ssafy.smartcane.lumen2.assist.AssistFeedbackController
 import com.ssafy.smartcane.lumen2.assist.AssistOverlayRenderer
@@ -70,7 +71,7 @@ class SafetyWalkActivity : ComponentActivity() {
         assistFeedback = AssistFeedbackController(this)
 
         assistTrafficDetector = runCatching { AssistTrafficDetector(this) }
-            .onFailure { Log.w(TAG, "AssistTrafficDetector 비활성 (model_a_traffic.tflite 없음)", it) }
+            .onFailure { Log.w(TAG, "AssistTrafficDetector 비활성 (${TFLiteRunner.DEFAULT_MODEL_FILE_NAME} 없음)", it) }
             .getOrNull()
         assistSignalTimerReader = AssistSignalTimerReader()
         trafficExecutor = Executors.newSingleThreadExecutor()
