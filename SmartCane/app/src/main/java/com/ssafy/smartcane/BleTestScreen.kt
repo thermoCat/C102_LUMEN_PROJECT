@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.ssafy.smartcane.ble.BleNusManager
+import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.network.HazardApiService
 import com.ssafy.smartcane.network.LocationApiService
 import com.ssafy.smartcane.ui.theme.AppWhite
@@ -440,7 +441,7 @@ private fun ControlTab(
 
         // ── AI 위험 감지 (기존 모델 — 자동 신고) ─────────────
         Button(
-            onClick = { onOpenModel("model_yolo26n.tflite") },
+            onClick = { onOpenModel(TFLiteRunner.DEFAULT_MODEL_FILE_NAME) },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
             shape = RoundedCornerShape(10.dp)
@@ -450,25 +451,15 @@ private fun ControlTab(
 
         Spacer(Modifier.height(8.dp))
 
-        // ── AI 위험 감지 (신규 모델 테스트 — 신고 없음) ──────
+        // ── AI 위험 감지 (동일 모델 테스트 — 신고 없음) ──────
         SectionLabel("모델 테스트 (신고 없음 · bbox만)")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(
-                onClick = { onOpenModel("test:model_1.tflite") },
-                modifier = Modifier.weight(1f).height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Model 1", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite)
-            }
-            Button(
-                onClick = { onOpenModel("test:model_2.tflite") },
-                modifier = Modifier.weight(1f).height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Model 2", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite)
-            }
+        Button(
+            onClick = { onOpenModel("test:${TFLiteRunner.DEFAULT_MODEL_FILE_NAME}") },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("yolo11n_fine_tune 테스트", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite)
         }
 
         Spacer(Modifier.height(12.dp))

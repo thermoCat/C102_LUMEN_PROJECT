@@ -2,9 +2,12 @@ package com.ssafy.smartcane.lumen2.assist
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.ssafy.smartcane.detection.TFLiteRunner
 import org.tensorflow.lite.Interpreter
 import java.io.Closeable
+import java.io.BufferedReader
 import java.io.FileInputStream
+import java.io.InputStreamReader
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
@@ -13,6 +16,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 class AssistTrafficDetector(context: Context) : Closeable {
+    private val labels = loadLabels(context)
     private val interpreter = Interpreter(loadModel(context), Interpreter.Options().apply {
         setNumThreads(2)
     })
@@ -55,8 +59,10 @@ class AssistTrafficDetector(context: Context) : Closeable {
     }
 
     private fun parseYoloOutput(output: Array<FloatArray>, sourceWidth: Float, sourceHeight: Float): List<TrafficDetection> {
-        val transposed = output.size <= DETECTION_VALUES + 16
-        val candidateCount = if (transposed) output.firstOrNull()?.size ?: 0 else output.size
+        val rowWidth = output.firstOrNull()?.size ?: return emptyList()
+        val expectedChannelCount = BBOX_VALUE_COUNT + labels.size
+        val transposed = output.size == expectedChannelCount || output.size < rowWidth
+        val candidateCount = if (transposed) rowWidth else output.size
         val detections = mutableListOf<TrafficDetection>()
         for (index in 0 until candidateCount) {
             val values = if (transposed) {
@@ -64,12 +70,21 @@ class AssistTrafficDetector(context: Context) : Closeable {
             } else {
                 output[index]
             }
-            if (values.size < DETECTION_VALUES) continue
-            val classScores = values.drop(4)
-            val classIndex = classScores.indices.maxByOrNull { classScores[it] } ?: continue
-            val confidence = classScores[classIndex]
-            if (confidence < CONFIDENCE_THRESHOLD) continue
+            if (values.size <= BBOX_VALUE_COUNT) continue
+
+            val classCount = min(labels.size, values.size - BBOX_VALUE_COUNT)
+            var classIndex = -1
+            var confidence = 0f
+            for (candidateClassIndex in 0 until classCount) {
+                val score = values[BBOX_VALUE_COUNT + candidateClassIndex]
+                if (score > confidence) {
+                    confidence = score
+                    classIndex = candidateClassIndex
+                }
+            }
+            if (classIndex < 0) continue
             val label = labelFor(classIndex) ?: continue
+            if (confidence < thresholdFor(label)) continue
 
             val cx = values[0]
             val cy = values[1]
@@ -129,12 +144,21 @@ class AssistTrafficDetector(context: Context) : Closeable {
     }
 
     private fun labelFor(index: Int): TrafficDetectionLabel? {
-        return when (index) {
-            0 -> TrafficDetectionLabel.CROSSWALK
-            1 -> TrafficDetectionLabel.GREEN_LIGHT
-            2 -> TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT
-            3 -> TrafficDetectionLabel.RED_LIGHT
+        return when (labels.getOrNull(index)) {
+            "crosswalk" -> TrafficDetectionLabel.CROSSWALK
+            "green_light" -> TrafficDetectionLabel.GREEN_LIGHT
+            "pedestrian_traffic_light" -> TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT
+            "red_light" -> TrafficDetectionLabel.RED_LIGHT
             else -> null
+        }
+    }
+
+    private fun thresholdFor(label: TrafficDetectionLabel): Float {
+        return when (label) {
+            TrafficDetectionLabel.CROSSWALK -> CROSSWALK_CONFIDENCE_THRESHOLD
+            TrafficDetectionLabel.GREEN_LIGHT,
+            TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT,
+            TrafficDetectionLabel.RED_LIGHT -> TRAFFIC_LIGHT_CONFIDENCE_THRESHOLD
         }
     }
 
@@ -145,11 +169,20 @@ class AssistTrafficDetector(context: Context) : Closeable {
         }
     }
 
+    private fun loadLabels(context: Context): List<String> {
+        return context.assets.open(TFLiteRunner.DEFAULT_LABELS_FILE_NAME).use { stream ->
+            BufferedReader(InputStreamReader(stream)).readLines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }
+    }
+
     private companion object {
-        private const val MODEL_NAME = "model_a_traffic.tflite"
+        private const val MODEL_NAME = TFLiteRunner.DEFAULT_MODEL_FILE_NAME
         private const val FLOAT_BYTES = 4
-        private const val DETECTION_VALUES = 8
-        private const val CONFIDENCE_THRESHOLD = 0.35f
+        private const val BBOX_VALUE_COUNT = 4
+        private const val CROSSWALK_CONFIDENCE_THRESHOLD = 0.10f
+        private const val TRAFFIC_LIGHT_CONFIDENCE_THRESHOLD = 0.30f
         private const val IOU_THRESHOLD = 0.45f
         private const val MAX_DETECTIONS = 12
     }

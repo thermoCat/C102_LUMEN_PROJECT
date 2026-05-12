@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>SmartCane 위험지도</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
+  <script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; }
+
+    #header {
+      padding: 12px 20px;
+      background: #16213e;
+      border-bottom: 2px solid #0f3460;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #header h1 { font-size: 18px; color: #e94560; }
+    #header span { font-size: 13px; color: #aaa; }
+
+    #controls {
+      padding: 10px 20px;
+      background: #16213e;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    select, button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #0f3460;
+      background: #0f3460;
+      color: #eee;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: #e94560; border-color: #e94560; }
+    .toggle-btn { transition: opacity 0.2s; }
+    .toggle-btn.off { opacity: 0.4; }
+    #status { font-size: 12px; color: #aaa; margin-left: auto; }
+    #count { color: #e94560; font-weight: bold; }
+
+    #map { width: 100%; height: calc(100vh - 100px); }
+
+    /* 호버 툴팁 */
+    #popup {
+      position: absolute;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 160px;
+      font-size: 12px;
+      pointer-events: none;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    #popup h3 { color: #e94560; margin-bottom: 6px; font-size: 13px; }
+    #popup p  { margin: 3px 0; color: #ccc; }
+    #popup strong { color: #eee; }
+
+    /* 클릭 시 목록 패널 */
+    #detail-panel {
+      position: absolute;
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 10px;
+      width: 300px;
+      max-height: 70vh;
+      display: none;
+      flex-direction: column;
+      z-index: 2000;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    #detail-header {
+      padding: 12px 16px;
+      background: #0f3460;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #detail-title { font-size: 14px; font-weight: bold; color: #e94560; }
+    #detail-close {
+      background: none; border: none; color: #aaa;
+      font-size: 18px; cursor: pointer; padding: 0; line-height: 1;
+    }
+    #detail-close:hover { color: #fff; background: none; }
+    #detail-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px;
+    }
+    .detail-item {
+      background: #1a2744;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: default;
+    }
+    .detail-item:last-child { margin-bottom: 0; }
+    .detail-item-type {
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .detail-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .detail-item-row { font-size: 12px; color: #aaa; margin: 3px 0; }
+    .detail-item-row span { color: #ddd; }
+    .detail-item img {
+      width: 100%; height: 120px; object-fit: cover;
+      border-radius: 6px; margin-top: 8px; display: none;
+    }
+
+    .legend {
+      position: absolute;
+      bottom: 30px;
+      left: 20px;
+      background: rgba(22,33,62,0.9);
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      z-index: 100;
+    }
+    .legend h4 { margin-bottom: 8px; color: #aaa; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; flex-shrink: 0; }
+    #sse-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #333; color: #aaa; }
+    #sse-status.connected { background: rgba(76,175,80,0.2); color: #4CAF50; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>SmartCane 위험지도</h1>
+  <span>시각장애인 보행 보조 서비스</span>
+</div>
+
+<div id="controls">
+  <label style="font-size:13px;color:#aaa">유형 필터:</label>
+  <select id="typeFilter" onchange="loadHazards()">
+    <option value="">전체</option>
+    <optgroup label="장애물">
+      <option value="POLE">기둥</option>
+      <option value="BOLLARD">볼라드</option>
+      <option value="BARRICADE">바리케이드</option>
+      <option value="MOVABLE_SIGNAGE">이동식 표지판</option>
+    </optgroup>
+    <optgroup label="손상 보도">
+      <option value="SIDEWALK_DAMAGED">손상된 보도</option>
+      <option value="BRAILLE_GUIDE_BLOCKS_DAMAGED">손상된 점자블록</option>
+      <option value="ALLEY_DAMAGED">손상된 골목길</option>
+    </optgroup>
+    <optgroup label="주의구역">
+      <option value="CAUTION_ZONE_STAIRS">계단</option>
+      <option value="CAUTION_ZONE_MANHOLE">맨홀</option>
+      <option value="CAUTION_ZONE_GRATING">배수구</option>
+      <option value="CAUTION_ZONE_REPAIR_ZONE">공사구역</option>
+    </optgroup>
+  </select>
+  <button onclick="loadHazards()">새로고침</button>
+  <button id="btn-sidewalk" class="toggle-btn off" onclick="toggleLayer('sidewalk')">인도 OFF</button>
+  <button id="btn-crosswalk" class="toggle-btn" onclick="toggleLayer('crosswalk')">횡단보도 ON</button>
+  <button id="btn-nodes" class="toggle-btn off" onclick="toggleNodes()">교차로 OFF</button>
+  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명 &nbsp;|&nbsp; 교차로: <span id="node-count">0</span>개</div>
+  <span id="sse-status">SSE 연결 중...</span>
+</div>
+
+<div id="map"></div>
+
+<!-- 호버 툴팁 -->
+<div id="popup">
+  <h3 id="popup-type"></h3>
+  <p id="popup-count-line" style="display:none">신고 수: <strong id="popup-count"></strong>건</p>
+  <p>신뢰도: <strong id="popup-confidence"></strong></p>
+  <p>시각: <strong id="popup-time"></strong></p>
+</div>
+
+<!-- 클릭 목록 패널 -->
+<div id="detail-panel">
+  <div id="detail-header">
+    <span id="detail-title">위험 신고 목록</span>
+    <button id="detail-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div id="detail-list"></div>
+</div>
+
+<div class="legend">
+  <h4>위험 유형</h4>
+  <div class="legend-item"><div class="legend-dot" style="background:#f44336"></div> 기둥</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div> 볼라드</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d32f2f"></div> 바리케이드</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#c62828"></div> 이동식 표지판</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#e91e63"></div> 손상된 보도</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ad1457"></div> 손상된 점자블록</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#880e4f"></div> 손상된 골목길</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff9800"></div> 계단 주의구역</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff5722"></div> 맨홀 주의구역</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#795548"></div> 배수구 주의구역</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div> 공사구역 주의구역</div>
+  <div class="legend-item" style="margin-top:8px"><div class="legend-dot" style="background:#29B6F6"></div> 보행자 (실시간)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#00E676; border-color:#00E676"></div> 교차로 노드 (ITS)</div>
+</div>
+
+<script>
+const COLORS = {
+  POLE:                         '#f44336',
+  BOLLARD:                      '#ef5350',
+  BARRICADE:                    '#d32f2f',
+  MOVABLE_SIGNAGE:              '#c62828',
+  SIDEWALK_DAMAGED:             '#e91e63',
+  BRAILLE_GUIDE_BLOCKS_DAMAGED: '#ad1457',
+  ALLEY_DAMAGED:                '#880e4f',
+  CAUTION_ZONE_STAIRS:          '#ff9800',
+  CAUTION_ZONE_MANHOLE:         '#ff5722',
+  CAUTION_ZONE_GRATING:         '#795548',
+  CAUTION_ZONE_REPAIR_ZONE:     '#ffc107'
+};
+const TYPE_KO = {
+  POLE:                         '기둥',
+  BOLLARD:                      '볼라드',
+  BARRICADE:                    '바리케이드',
+  MOVABLE_SIGNAGE:              '이동식 표지판',
+  SIDEWALK_DAMAGED:             '손상된 보도',
+  BRAILLE_GUIDE_BLOCKS_DAMAGED: '손상된 점자블록',
+  ALLEY_DAMAGED:                '손상된 골목길',
+  CAUTION_ZONE_STAIRS:          '계단 주의구역',
+  CAUTION_ZONE_MANHOLE:         '맨홀 주의구역',
+  CAUTION_ZONE_GRATING:         '배수구 주의구역',
+  CAUTION_ZONE_REPAIR_ZONE:     '공사구역 주의구역'
+};
+
+const osmLayer = new ol.layer.Tile({
+  source: new ol.source.OSM()
+});
+
+const hazardSource = new ol.source.Vector();
+const hazardLayer = new ol.layer.Vector({ source: hazardSource });
+
+// ── 교차로 노드 레이어 ──────────────────────────────────────
+const nodeSource = new ol.source.Vector();
+const nodeLayer  = new ol.layer.Vector({
+  source: nodeSource,
+  visible: false   // 기본 OFF
+});
+
+const NODE_TYPE_KO = {
+  '1': '교차로',
+  '2': '로터리',
+  '3': '입체교차로',
+  '4': '종점/시점',
+  '5': '기타노드'
+};
+
+function nodeStyle(nodeType) {
+  const colors = {
+    '1': '#00E676',   // 교차로 — 초록
+    '2': '#76FF03',   // 로터리 — 연두
+    '3': '#FFEA00',   // 입체교차로 — 노랑
+    '4': '#90A4AE',   // 종점/시점 — 회색
+  };
+  const color = colors[nodeType] || '#B2FF59';
+  return new ol.style.Style({
+    image: new ol.style.Circle({
+      radius: 5,
+      fill: new ol.style.Fill({ color }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 1.5 })
+    })
+  });
+}
+
+let nodesVisible = false;
+let nodesFetching = false;
+let nodeDebounceTimer = null;
+
+function toggleNodes() {
+  nodesVisible = !nodesVisible;
+  nodeLayer.setVisible(nodesVisible);
+  const btn = document.getElementById('btn-nodes');
+  btn.textContent = '교차로 ' + (nodesVisible ? 'ON' : 'OFF');
+  btn.classList.toggle('off', !nodesVisible);
+  if (nodesVisible) loadNodes();
+  else {
+    nodeSource.clear();
+    document.getElementById('node-count').textContent = '0';
+  }
+}
+
+function loadNodes() {
+  if (!nodesVisible || nodesFetching) return;
+  const size = map.getSize();
+  if (!size || size[0] === 0) return;
+  const extent = ol.proj.transformExtent(
+    map.getView().calculateExtent(size), 'EPSG:3857', 'EPSG:4326'
+  );
+  nodesFetching = true;
+  fetch(`/api/road/nodes?minLng=${extent[0]}&minLat=${extent[1]}&maxLng=${extent[2]}&maxLat=${extent[3]}&limit=2000`)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(geojson => {
+      nodeSource.clear();
+      geojson.features.forEach(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        const feature = new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat])),
+          nodeProps: f.properties
+        });
+        feature.setStyle(nodeStyle(String(f.properties.nodeType)));
+        nodeSource.addFeature(feature);
+      });
+      document.getElementById('node-count').textContent = geojson.totalCount;
+    })
+    .catch(e => console.error('교차로 노드 로드 실패:', e))
+    .finally(() => { nodesFetching = false; });
+}
+
+function loadNodesDebounced() {
+  if (!nodesVisible) return;
+  clearTimeout(nodeDebounceTimer);
+  nodeDebounceTimer = setTimeout(loadNodes, 400);
+}
+
+const walkerSource = new ol.source.Vector();
+const walkerLayer = new ol.layer.Vector({ source: walkerSource });
+const walkers = {};       // deviceId → feature
+const walkerSeen = {};    // deviceId → lastSeen timestamp
+const walkerStopped = {}; // deviceId → stopped timestamp (블랙리스트)
+
+const WALKER_TIMEOUT_MS = 5000;
+const WALKER_STOP_BLOCK_MS = 100;
+
+function removeWalker(deviceId) {
+  if (walkers[deviceId]) {
+    walkerSource.removeFeature(walkers[deviceId]);
+    delete walkers[deviceId];
+  }
+  delete walkerSeen[deviceId];
+  walkerStopped[deviceId] = Date.now();
+  document.getElementById('walker-count').textContent = Object.keys(walkers).length;
+  if (map) map.render();
+}
+
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(walkerSeen).forEach(deviceId => {
+    if (now - walkerSeen[deviceId] > WALKER_TIMEOUT_MS) {
+      removeWalker(deviceId);
+    }
+  });
+  Object.keys(walkerStopped).forEach(deviceId => {
+    if (now - walkerStopped[deviceId] > WALKER_STOP_BLOCK_MS) {
+      delete walkerStopped[deviceId];
+    }
+  });
+}, 1000);
+
+function walkerStyle() {
+  return new ol.style.Style({
+    image: new ol.style.Circle({
+      radius: 8,
+      fill: new ol.style.Fill({ color: '#29B6F6' }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 2 })
+    })
+  });
+}
+
+let currentEs = null;
+let reconnectTimer = null;
+
+function connectSse() {
+  if (currentEs) {
+    currentEs.onerror = null; // close 시 onerror 재발동 방지
+    currentEs.close();
+    currentEs = null;
+  }
+  const es = new EventSource('/api/location/stream');
+  currentEs = es;
+  const statusEl = document.getElementById('sse-status');
+
+  es.addEventListener('location-stop', e => {
+    const { deviceId } = JSON.parse(e.data);
+    removeWalker(deviceId);
+  });
+
+  es.addEventListener('location', e => {
+    const { deviceId, lat, lng } = JSON.parse(e.data);
+    // 중지 후 블랙리스트 기간 내 stale 이벤트 무시
+    if (walkerStopped[deviceId]) return;
+    const coord = ol.proj.fromLonLat([lng, lat]);
+    if (walkers[deviceId]) {
+      walkers[deviceId].getGeometry().setCoordinates(coord);
+    } else {
+      const f = new ol.Feature({ geometry: new ol.geom.Point(coord) });
+      f.setStyle(walkerStyle());
+      walkerSource.addFeature(f);
+      walkers[deviceId] = f;
+    }
+    walkerSeen[deviceId] = Date.now();
+    document.getElementById('walker-count').textContent = Object.keys(walkers).length;
+  });
+
+  es.onopen = () => {
+    statusEl.textContent = 'SSE 연결됨';
+    statusEl.className = 'connected';
+  };
+  es.onerror = () => {
+    statusEl.textContent = 'SSE 재연결 중...';
+    statusEl.className = '';
+    es.onerror = null;
+    es.close();
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectSse();
+      }, 3000);
+    }
+  };
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').style.display = 'none';
+}
+
+function showDetail(items) {
+  const panel = document.getElementById('detail-panel');
+  const list  = document.getElementById('detail-list');
+  const title = document.getElementById('detail-title');
+
+  title.textContent = `위험 신고 목록 (${items.length}건)`;
+  list.innerHTML = '';
+
+  items
+    .slice()
+    .sort((a, b) => (b.reportedAt || '').localeCompare(a.reportedAt || ''))
+    .forEach((p, idx) => {
+      const color  = COLORS[p.type] || '#999';
+      const koType = TYPE_KO[p.type] || p.type;
+      const conf   = p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '-';
+      const time   = p.reportedAt ? p.reportedAt.replace('T', ' ').substring(0, 16) : '-';
+
+      const div = document.createElement('div');
+      div.className = 'detail-item';
+      div.innerHTML = `
+        <div class="detail-item-type">
+          <div class="detail-dot" style="background:${color}"></div>
+          ${koType}
+        </div>
+        <div class="detail-item-row">신뢰도: <span>${conf}</span></div>
+        <div class="detail-item-row">시각: <span>${time}</span></div>
+        ${p.description ? `<div class="detail-item-row">설명: <span>${p.description}</span></div>` : ''}
+      `;
+
+      if (p.imageUrl) {
+        const img = document.createElement('img');
+        img.src = `/api/hazards/image?s3Url=${encodeURIComponent(p.imageUrl)}`;
+        img.style.display = 'block';
+        div.appendChild(img);
+      }
+
+      list.appendChild(div);
+    });
+
+  panel.style.display = 'flex';
+}
+
+let map, sidewalkLayer, crosswalkLayer;
+
+function toggleLayer(name) {
+  const layer = name === 'sidewalk' ? sidewalkLayer : crosswalkLayer;
+  const btn = document.getElementById('btn-' + name);
+  const visible = !layer.getVisible();
+  layer.setVisible(visible);
+  btn.textContent = (name === 'sidewalk' ? '인도 ' : '횡단보도 ') + (visible ? 'ON' : 'OFF');
+  btn.classList.toggle('off', !visible);
+}
+
+function makeStyle(type, count) {
+  const radius = count > 1 ? 14 : 10;
+  const styles = [
+    new ol.style.Style({
+      image: new ol.style.Circle({
+        radius,
+        fill: new ol.style.Fill({ color: COLORS[type] || '#999' }),
+        stroke: new ol.style.Stroke({ color: '#fff', width: 2 })
+      })
+    })
+  ];
+  if (count > 1) {
+    styles.push(new ol.style.Style({
+      text: new ol.style.Text({
+        text: String(count),
+        font: 'bold 11px sans-serif',
+        fill: new ol.style.Fill({ color: '#fff' }),
+        offsetY: 1
+      })
+    }));
+  }
+  return styles;
+}
+
+let hazardDebounceTimer = null;
+let hazardFetching = false;
+
+function loadHazards() {
+  if (hazardFetching) return;
+  const size = map.getSize();
+  if (!size || size[0] === 0 || size[1] === 0) return;
+
+  const extent = ol.proj.transformExtent(
+    map.getView().calculateExtent(size),
+    'EPSG:3857', 'EPSG:4326'
+  );
+  const type = document.getElementById('typeFilter').value;
+  let url = `/api/hazards?minLng=${extent[0]}&minLat=${extent[1]}&maxLng=${extent[2]}&maxLat=${extent[3]}`;
+  if (type) url += `&type=${type}`;
+
+  hazardFetching = true;
+  fetch(url)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(geojson => {
+      hazardSource.clear();
+
+      // 같은 좌표끼리 그룹핑 (소수점 5자리 기준)
+      const groups = {};
+      geojson.features.forEach(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        const key = `${parseFloat(lat).toFixed(5)},${parseFloat(lng).toFixed(5)}`;
+        if (!groups[key]) groups[key] = { lng, lat, items: [] };
+        groups[key].items.push(f.properties);
+      });
+
+      Object.values(groups).forEach(g => {
+        const dominant = g.items.reduce((a, b) =>
+          (b.confidence || 0) > (a.confidence || 0) ? b : a, g.items[0]);
+        const feature = new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([g.lng, g.lat])),
+          props: dominant,
+          allProps: g.items
+        });
+        feature.setStyle(makeStyle(dominant.type, g.items.length));
+        hazardSource.addFeature(feature);
+      });
+
+      document.getElementById('count').textContent = geojson.totalCount;
+    })
+    .catch(e => console.error('API 오류:', e))
+    .finally(() => { hazardFetching = false; });
+}
+
+function loadHazardsDebounced() {
+  clearTimeout(hazardDebounceTimer);
+  hazardDebounceTimer = setTimeout(loadHazards, 300);
+}
+
+(function initMap() {
+
+    sidewalkLayer = new ol.layer.Tile({
+      visible: false,
+      opacity: 0.7,
+      source: new ol.source.TileWMS({
+        url: '/api/proxy/safemap',
+        params: {
+          LAYERS: 'A2SM_RBLNG_1',
+          STYLES: 'A2SM_RBLNG_1',
+          FORMAT: 'image/png',
+          TRANSPARENT: 'TRUE',
+          SRS: 'EPSG:3857'
+        }
+      })
+    });
+
+    crosswalkLayer = new ol.layer.Tile({
+      visible: true,
+      opacity: 0.8,
+      source: new ol.source.TileWMS({
+        url: '/api/proxy/safemap',
+        params: {
+          LAYERS: 'A2SM_RBLNG_3',
+          STYLES: 'A2SM_RBLNG_3',
+          FORMAT: 'image/png',
+          TRANSPARENT: 'TRUE',
+          SRS: 'EPSG:3857'
+        }
+      })
+    });
+
+    map = new ol.Map({
+      target: 'map',
+      layers: [osmLayer, sidewalkLayer, crosswalkLayer, nodeLayer, hazardLayer, walkerLayer],
+      view: new ol.View({
+        center: ol.proj.fromLonLat([126.8099, 35.2024]),
+        zoom: 16
+      })
+    });
+
+    const popup = document.getElementById('popup');
+
+    // 호버 → 간단 툴팁
+    map.on('pointermove', e => {
+      const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
+
+      // 교차로 노드 호버
+      if (feature && feature.get('nodeProps')) {
+        const np = feature.get('nodeProps');
+        document.getElementById('popup-type').textContent =
+          (NODE_TYPE_KO[String(np.nodeType)] || '노드') + (np.nodeName ? '  ' + np.nodeName : '');
+        document.getElementById('popup-confidence').textContent = 'ID: ' + (np.nodeId || '-');
+        document.getElementById('popup-time').textContent = '유형코드: ' + (np.nodeType || '-');
+        document.getElementById('popup-count-line').style.display = 'none';
+        popup.style.display = 'block';
+        popup.style.left = (e.pixel[0] + 15) + 'px';
+        popup.style.top  = (e.pixel[1] - 10) + 'px';
+        map.getTargetElement().style.cursor = 'pointer';
+        return;
+      }
+
+      if (feature && feature.get('props')) {
+        const p = feature.get('props');
+        const all = feature.get('allProps') || [p];
+        document.getElementById('popup-type').textContent = TYPE_KO[p.type] || p.type;
+        document.getElementById('popup-confidence').textContent =
+          p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '-';
+        document.getElementById('popup-time').textContent =
+          p.reportedAt ? p.reportedAt.replace('T', ' ').substring(0, 16) : '-';
+        const countLine = document.getElementById('popup-count-line');
+        if (all.length > 1) {
+          document.getElementById('popup-count').textContent = all.length;
+          countLine.style.display = 'block';
+        } else {
+          countLine.style.display = 'none';
+        }
+        popup.style.display = 'block';
+        popup.style.left = (e.pixel[0] + 15) + 'px';
+        popup.style.top  = (e.pixel[1] - 10) + 'px';
+        map.getTargetElement().style.cursor = 'pointer';
+      } else {
+        popup.style.display = 'none';
+        map.getTargetElement().style.cursor = '';
+      }
+    });
+
+    // 클릭 → 목록 패널
+    map.on('singleclick', e => {
+      const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
+      if (feature && feature.get('allProps')) {
+        showDetail(feature.get('allProps'));
+      }
+    });
+
+    map.on('moveend', loadHazardsDebounced);
+    map.on('moveend', loadNodesDebounced);
+
+    // 맵이 완전히 렌더된 후 최초 1회 로드 (getSize()가 [0,0]인 타이밍 버그 방지)
+    map.once('rendercomplete', loadHazards);
+
+    // GPS로 초기 위치 이동 후 마커 로드
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          map.getView().animate(
+            { center: ol.proj.fromLonLat([pos.coords.longitude, pos.coords.latitude]), zoom: 16, duration: 500 },
+            () => loadHazards()
+          );
+        },
+        () => { /* 권한 거부 시 기본 좌표 유지, rendercomplete에서 로드 */ }
+      );
+    }
+
+    setInterval(loadHazards, 10000);
+    connectSse();
+}());
+</script>
+</body>
+</html>

@@ -10,10 +10,13 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
+private const val DEFAULT_TFLITE_MODEL_FILE_NAME = "yolo11n_fine_tune.tflite"
+private const val DEFAULT_LABELS_ASSET_FILE_NAME = "labels.txt"
+
 class TFLiteRunner(
     context: Context,
-    modelFileName: String = "model.tflite",
-    labelsFileName: String = "labels.txt"
+    modelFileName: String = DEFAULT_TFLITE_MODEL_FILE_NAME,
+    labelsFileName: String = DEFAULT_LABELS_ASSET_FILE_NAME
 ) : AutoCloseable {
 
     private val interpreter: Interpreter
@@ -48,14 +51,14 @@ class TFLiteRunner(
 
     /**
      * 가장 높은 confidence 탐지 1개 반환 (HazardDetectionAnalyzer 호환).
-     * [minConfidence] 기본값은 CONFIDENCE_THRESHOLD(0.5).
-     * 서비스에서 진단 목적으로 0.3 등 낮은 값을 지정할 수 있음.
+     * 기본값은 클래스별 threshold와 전역 최소 threshold를 함께 적용.
      */
-    fun classify(bitmap: Bitmap, minConfidence: Float = CONFIDENCE_THRESHOLD): Result? =
+    fun classify(bitmap: Bitmap, minConfidence: Float = MIN_CONFIDENCE_THRESHOLD): Result? =
         detectAll(bitmap, minConfidence).maxByOrNull { it.confidence }
 
     /**
-     * confidence ≥ [minConfidence] 인 모든 탐지 반환.
+     * confidence가 클래스별 threshold 이상인 모든 탐지 반환.
+     * [minConfidence]는 모든 클래스에 적용할 전역 하한값이며, 클래스별 threshold보다 낮으면 클래스별 값이 우선한다.
      *
      * 지원 출력 형식:
      *  A) [1, N, 6]          — [x1,y1,x2,y2,conf,class_id]  (구형 단일 클래스 conf)
@@ -64,7 +67,7 @@ class TFLiteRunner(
      *
      * 형식 C 감지 기준: stride(마지막 차원) > numDetections(앞 차원) * 10
      */
-    fun detectAll(bitmap: Bitmap, minConfidence: Float = CONFIDENCE_THRESHOLD): List<Result> {
+    fun detectAll(bitmap: Bitmap, minConfidence: Float = MIN_CONFIDENCE_THRESHOLD): List<Result> {
         val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true)
         val inputBuffer = bitmapToByteBuffer(resized)
 
@@ -143,8 +146,9 @@ class TFLiteRunner(
                 classId = maxIdx
             }
 
-            if (conf < minConfidence) continue
             val label = labels.getOrNull(classId) ?: continue
+            val threshold = maxOf(minConfidence, thresholdFor(label))
+            if (conf < threshold) continue
 
             // 좌표 형식 자동 감지: cx,cy,w,h vs x1,y1,x2,y2
             // YOLOv11(전치)는 항상 cx,cy,w,h; 레거시는 둘 다 가능
@@ -165,8 +169,12 @@ class TFLiteRunner(
         // NMS: 겹치는 박스 제거 (IoU > 0.45이면 낮은 confidence 제거)
         val nmsResult = nms(results)
         com.ssafy.smartcane.util.AppLogger.log("TFLite",
-            "raw=${results.size} → NMS후=${nmsResult.size} (threshold=$minConfidence)")
+            "raw=${results.size} → NMS후=${nmsResult.size} (threshold=class-specific, min=$minConfidence)")
         return nmsResult
+    }
+
+    private fun thresholdFor(label: String): Float {
+        return CLASS_CONFIDENCE_THRESHOLDS[label.trim()] ?: CONFIDENCE_THRESHOLD
     }
 
     /** Non-Maximum Suppression */
@@ -226,6 +234,23 @@ class TFLiteRunner(
     )
 
     companion object {
-        const val CONFIDENCE_THRESHOLD = 0.5f
+        const val DEFAULT_MODEL_FILE_NAME = DEFAULT_TFLITE_MODEL_FILE_NAME
+        const val DEFAULT_LABELS_FILE_NAME = DEFAULT_LABELS_ASSET_FILE_NAME
+        const val CONFIDENCE_THRESHOLD = 0.175f
+        const val MIN_CONFIDENCE_THRESHOLD = 0.10f
+
+        private val CLASS_CONFIDENCE_THRESHOLDS = mapOf(
+            "sidewalk:damaged" to 0.10f,
+            "alley:damaged" to 0.10f,
+            "braille_guide_blocks:damaged" to 0.10f,
+            "caution_zone:repair_zone" to 0.10f,
+            "caution_zone:stairs" to 0.12f,
+            "caution_zone:manhole" to 0.30f,
+            "caution_zone:grating" to 0.30f,
+            "crosswalk" to 0.10f,
+            "green_light" to 0.30f,
+            "red_light" to 0.30f,
+            "pedestrian_traffic_light" to 0.30f
+        )
     }
 }
