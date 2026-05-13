@@ -9,8 +9,14 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.os.SystemClock
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import java.util.Locale
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -97,9 +103,13 @@ import com.kakao.vectormap.route.RouteLineStyles
 import com.kakao.vectormap.route.RouteLineStylesSet
 import com.ssafy.smartcane.BuildConfig
 import com.ssafy.smartcane.R
+import com.ssafy.smartcane.SmartCaneApplication
+import com.ssafy.smartcane.ble.BleNusManager
 import com.ssafy.smartcane.data.model.RouteDestination
 import com.ssafy.smartcane.navigation.HeadingProvider
 import com.ssafy.smartcane.navigation.LowPassLocationSmoother
+import com.ssafy.smartcane.navigation.RouteGuidanceController
+import com.ssafy.smartcane.navigation.RouteGuidanceEventType
 import com.ssafy.smartcane.navigation.RouteDeviationStatus
 import com.ssafy.smartcane.navigation.RouteMatchResult
 import com.ssafy.smartcane.navigation.RouteNavigationMatcher
@@ -139,6 +149,8 @@ private const val MAX_LAST_KNOWN_AGE_MS = 30_000L
 private const val MAX_ROUTE_LOCATION_ACCURACY_METERS = 30f
 private const val MAX_FALLBACK_ROUTE_LOCATION_ACCURACY_METERS = 120f
 private const val REROUTE_COOLDOWN_MS = 30_000L
+private const val ROUTE_BEARING_LOOKAHEAD_METERS = 12f
+private const val ROUTE_VIBRATION_COOLDOWN_MS = 2_000L
 
 @Composable
 fun RouteScreen(
@@ -149,12 +161,17 @@ fun RouteScreen(
     val context = LocalContext.current
     val directionsService = remember { WalkingDirectionsService() }
     val localSearchService = remember { KakaoLocalSearchService() }
+    val bleManager = remember(context) {
+        (context.applicationContext as? SmartCaneApplication)?.bleNusManager
+    }
     val locationSmoother = remember(destination?.longitude, destination?.latitude) { LowPassLocationSmoother() }
     val routeScope = rememberCoroutineScope()
     var sub by remember { mutableStateOf(RouteSub.Main) }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var resolvedOriginName by remember { mutableStateOf(originName) }
     var routePlan by remember { mutableStateOf<WalkingRoutePlan?>(null) }
+    val guidanceController = remember(routePlan) { RouteGuidanceController() }
+    val routeTtsSpeaker = rememberRouteTtsSpeaker()
     var isRouteLoading by remember { mutableStateOf(false) }
     var routeMessage by remember { mutableStateOf("") }
     var hasLocationPermission by remember { mutableStateOf(hasLocationPermission(context)) }
@@ -163,6 +180,8 @@ fun RouteScreen(
     var routeRequestToken by remember(destination?.longitude, destination?.latitude) { mutableStateOf(0) }
     var handledRouteRequestToken by remember(destination?.longitude, destination?.latitude) { mutableStateOf(-1) }
     var lastRerouteAt by remember(destination?.longitude, destination?.latitude) { mutableStateOf(0L) }
+    var lastRouteVibrationGuide by remember { mutableStateOf("") }
+    var lastRouteVibrationAt by remember { mutableStateOf(0L) }
     var routeJob by remember(destination?.longitude, destination?.latitude) { mutableStateOf<Job?>(null) }
     val hasRouteOrigin = currentLocation != null
     val routeMatch = remember(currentLocation, routePlan) {
@@ -173,6 +192,13 @@ fun RouteScreen(
         } else {
             RouteNavigationMatcher.match(location, plan.points)
         }
+    }
+    val routeHeadingGuidance = remember(headingDegrees, routeMatch, routePlan) {
+        buildRouteHeadingGuidance(
+            headingDegrees = headingDegrees,
+            routeMatch = routeMatch,
+            routePlan = routePlan
+        )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -281,6 +307,52 @@ fun RouteScreen(
         if (now - lastRerouteAt < REROUTE_COOLDOWN_MS) return@LaunchedEffect
         lastRerouteAt = now
         routeRequestToken++
+    }
+
+    LaunchedEffect(
+        sub,
+        routePlan,
+        routeMatch?.status,
+        routeMatch?.traveledDistanceMeters,
+        routeMatch?.remainingDistanceMeters
+    ) {
+        if (sub != RouteSub.Navigation) return@LaunchedEffect
+        val event = guidanceController.update(routePlan, routeMatch) ?: return@LaunchedEffect
+        Log.d(
+            ROUTE_TAG,
+            "Route guidance event=${event.type} cue=${event.cue} steps=${event.stepsRemaining} distance=${event.distanceMeters.formatDegrees()} message=${event.message}"
+        )
+        routeTtsSpeaker.speak(
+            text = event.message,
+            interrupt = event.type != RouteGuidanceEventType.PRE_TURN
+        )
+    }
+
+    LaunchedEffect(
+        sub,
+        routeHeadingGuidance?.targetBearingDegrees,
+        routeHeadingGuidance?.diffDegrees,
+        routeMatch?.traveledDistanceMeters
+    ) {
+        if (sub != RouteSub.Navigation) return@LaunchedEffect
+        val guidance = routeHeadingGuidance ?: return@LaunchedEffect
+        Log.d(
+            ROUTE_TAG,
+            "Route heading heading=${guidance.headingDegrees.formatDegrees()} target=${guidance.targetBearingDegrees.formatDegrees()} diff=${guidance.diffDegrees.formatSignedDegrees()} guide=${guidance.guideText}"
+        )
+
+        val command = guidance.guideText.toRouteVibrationCommand() ?: return@LaunchedEffect
+        val now = System.currentTimeMillis()
+        val commandChanged = guidance.guideText != lastRouteVibrationGuide
+        val cooldownElapsed = now - lastRouteVibrationAt >= ROUTE_VIBRATION_COOLDOWN_MS
+        if (!commandChanged && !cooldownElapsed) return@LaunchedEffect
+        val manager = bleManager ?: return@LaunchedEffect
+        if (manager.connectionState.value != BleNusManager.ConnectionState.CONNECTED) return@LaunchedEffect
+
+        manager.sendCommand(command)
+        lastRouteVibrationGuide = guidance.guideText
+        lastRouteVibrationAt = now
+        Log.d(ROUTE_TAG, "Route vibration command=$command guide=${guidance.guideText}")
     }
 
     val destName = destination?.name.orEmpty()
@@ -1511,6 +1583,109 @@ private fun List<RoutePoint>.routeKey(): String {
     return "$size:${first.latitude},${first.longitude}:${middle.latitude},${middle.longitude}:${last.latitude},${last.longitude}"
 }
 
+private data class RouteHeadingGuidance(
+    val headingDegrees: Float,
+    val targetBearingDegrees: Float,
+    val diffDegrees: Float,
+    val guideText: String
+)
+
+private fun buildRouteHeadingGuidance(
+    headingDegrees: Float?,
+    routeMatch: RouteMatchResult?,
+    routePlan: WalkingRoutePlan?
+): RouteHeadingGuidance? {
+    val heading = headingDegrees ?: return null
+    val match = routeMatch ?: return null
+    val points = routePlan?.points?.withoutConsecutiveDuplicates().orEmpty()
+    if (points.size < 2) return null
+
+    val targetPoint = points.pointAtDistance(
+        targetDistanceMeters = match.traveledDistanceMeters + ROUTE_BEARING_LOOKAHEAD_METERS
+    ) ?: points.last()
+    val targetBearing = bearingDegrees(match.snappedPoint, targetPoint) ?: return null
+    val diff = angleDeltaDegrees(targetBearing - heading)
+    return RouteHeadingGuidance(
+        headingDegrees = heading,
+        targetBearingDegrees = targetBearing,
+        diffDegrees = diff,
+        guideText = diff.toHeadingGuideText()
+    )
+}
+
+private fun List<RoutePoint>.pointAtDistance(targetDistanceMeters: Float): RoutePoint? {
+    if (isEmpty()) return null
+    if (targetDistanceMeters <= 0f) return first()
+
+    var traveled = 0f
+    for (index in 0 until lastIndex) {
+        val start = this[index]
+        val end = this[index + 1]
+        val segmentDistance = distanceMeters(start, end)
+        if (segmentDistance <= 0f) continue
+        if (traveled + segmentDistance >= targetDistanceMeters) {
+            val ratio = ((targetDistanceMeters - traveled) / segmentDistance).coerceIn(0f, 1f)
+            return RoutePoint(
+                longitude = start.longitude + (end.longitude - start.longitude) * ratio,
+                latitude = start.latitude + (end.latitude - start.latitude) * ratio
+            )
+        }
+        traveled += segmentDistance
+    }
+    return last()
+}
+
+private fun bearingDegrees(start: RoutePoint, end: RoutePoint): Float? {
+    if (start == end) return null
+    val startLat = Math.toRadians(start.latitude)
+    val endLat = Math.toRadians(end.latitude)
+    val deltaLng = Math.toRadians(end.longitude - start.longitude)
+    val y = sin(deltaLng) * cos(endLat)
+    val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(deltaLng)
+    return ((Math.toDegrees(atan2(y, x)) + 360.0) % 360.0).toFloat()
+}
+
+private fun distanceMeters(start: RoutePoint, end: RoutePoint): Float {
+    val earthRadius = 6_371_000.0
+    val startLat = Math.toRadians(start.latitude)
+    val endLat = Math.toRadians(end.latitude)
+    val deltaLat = Math.toRadians(end.latitude - start.latitude)
+    val deltaLng = Math.toRadians(end.longitude - start.longitude)
+    val a = sin(deltaLat / 2).pow(2.0) +
+        cos(startLat) * cos(endLat) * sin(deltaLng / 2).pow(2.0)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return (earthRadius * c).toFloat()
+}
+
+private fun angleDeltaDegrees(delta: Float): Float =
+    ((delta + 540f) % 360f) - 180f
+
+private fun Float.toHeadingGuideText(): String =
+    when {
+        this in -20f..20f -> "straight"
+        kotlin.math.abs(this) >= 150f -> "turn-back"
+        this > 70f -> "turn-right"
+        this > 20f -> "adjust-right"
+        this < -70f -> "turn-left"
+        else -> "adjust-left"
+    }
+
+private fun String.toRouteVibrationCommand(): String? =
+    when (this) {
+        "adjust-left",
+        "turn-left" -> "L"
+        "adjust-right",
+        "turn-right" -> "R"
+        "turn-back" -> "B"
+        else -> null
+    }
+
+private fun Float.formatDegrees(): String =
+    String.format(Locale.US, "%.1f", this)
+
+private fun Float.formatSignedDegrees(): String =
+    String.format(Locale.US, "%+.1f", this)
+
 private fun RouteLineLayer.drawRoute(points: List<RoutePoint>) {
     removeAll()
     val distinctPoints = points.withoutConsecutiveDuplicates()
@@ -1538,6 +1713,49 @@ private fun DirectionCue.routeIconRes(): Int =
         DirectionCue.STRAIGHT -> R.drawable.ic_route_straight
     }
 
+private class RouteTtsSpeaker(
+    private val tts: TextToSpeech,
+    private val isReady: () -> Boolean
+) {
+    fun speak(text: String, interrupt: Boolean) {
+        if (!isReady() || text.isBlank()) return
+        val queueMode = if (interrupt) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        tts.speak(text, queueMode, null, "route-guide-${System.currentTimeMillis()}")
+    }
+}
+
+@Composable
+private fun rememberRouteTtsSpeaker(): RouteTtsSpeaker {
+    val context = LocalContext.current
+    var ready by remember { mutableStateOf(false) }
+    val tts = remember(context) {
+        TextToSpeech(context.applicationContext) { status ->
+            ready = status == TextToSpeech.SUCCESS
+        }
+    }
+
+    LaunchedEffect(ready, tts) {
+        if (ready) {
+            tts.language = Locale.KOREAN
+            tts.setSpeechRate(1.0f)
+        }
+    }
+
+    DisposableEffect(tts) {
+        onDispose {
+            tts.stop()
+            tts.shutdown()
+        }
+    }
+
+    return remember(tts) {
+        RouteTtsSpeaker(
+            tts = tts,
+            isReady = { ready }
+        )
+    }
+}
+
 @Composable
 private fun HeadingEffect(
     enabled: Boolean,
@@ -1555,11 +1773,14 @@ private fun HeadingEffect(
             latestOnHeading(heading)
         }
         val started = provider.start()
-        if (!started) {
+        if (started) {
+            Log.d(ROUTE_TAG, "Heading sensor started")
+        } else {
             Log.w(ROUTE_TAG, "Heading sensor unavailable")
         }
 
         onDispose {
+            Log.d(ROUTE_TAG, "Heading sensor stopped")
             provider.stop()
         }
     }
