@@ -329,7 +329,6 @@ class AssistOverlayRenderer {
     }
 
     private fun drawObstacleMarks(canvas: Canvas, visualization: AssistVisualization) {
-        val corridorClip = screenPath(visualization.selectedSafetyPolygon) ?: return
         val roadPath = Path()
         val depthPath = Path()
         val curbPath = Path()
@@ -365,15 +364,12 @@ class AssistOverlayRenderer {
             }
         }
         if (hasDepth) canvas.drawPath(depthPath, depthAnomalyFillPaint)
-        if (hasWalkable || hasRoad || hasCurb || hasNonWalkable) {
-            canvas.save()
-            canvas.clipPath(corridorClip)
-            if (hasWalkable) canvas.drawPath(walkablePath, walkableFillPaint)
-            if (hasRoad) canvas.drawPath(roadPath, roadFillPaint)
-            if (hasCurb) canvas.drawPath(curbPath, curbBoundaryFillPaint)
-            if (hasNonWalkable) canvas.drawPath(semanticObstaclePath, obstacleFillPaint)
-            canvas.restore()
-        }
+        
+        // 클리핑을 제거하여 정면뿐만 아니라 좌우 분석 영역의 색상(인도, 차도 등)도 모두 보이도록 수정
+        if (hasWalkable) canvas.drawPath(walkablePath, walkableFillPaint)
+        if (hasRoad) canvas.drawPath(roadPath, roadFillPaint)
+        if (hasCurb) canvas.drawPath(curbPath, curbBoundaryFillPaint)
+        if (hasNonWalkable) canvas.drawPath(semanticObstaclePath, obstacleFillPaint)
     }
 
     private fun drawDepthSectionLines(canvas: Canvas, visualization: AssistVisualization) {
