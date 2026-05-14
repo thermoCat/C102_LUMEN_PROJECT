@@ -95,11 +95,6 @@ class AssistOverlayRenderer {
         style = Paint.Style.STROKE
         strokeWidth = 5f
     }
-    private val ocrCropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        color = Color.argb(210, 255, 255, 255)
-    }
     private val trafficLabelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.argb(190, 8, 15, 22)
@@ -234,11 +229,11 @@ class AssistOverlayRenderer {
 
     private fun trafficAlert(decision: AssistDecision): SituationAlert? {
         val detections = decision.visualization?.trafficDetections.orEmpty()
-        detections.bestTrafficDetection(TrafficDetectionLabel.RED_LIGHT)?.let { detection ->
-            return SituationAlert("정지 신호 감지${trafficSeconds(detection)}", Color.rgb(255, 90, 90))
+        detections.bestTrafficDetection(TrafficDetectionLabel.RED_LIGHT)?.let { _ ->
+            return SituationAlert("정지 신호 감지", Color.rgb(255, 90, 90))
         }
-        detections.bestTrafficDetection(TrafficDetectionLabel.GREEN_LIGHT)?.let { detection ->
-            return SituationAlert("초록 신호 감지${trafficSeconds(detection)}", Color.rgb(70, 230, 120))
+        detections.bestTrafficDetection(TrafficDetectionLabel.GREEN_LIGHT)?.let { _ ->
+            return SituationAlert("초록 신호 감지", Color.rgb(70, 230, 120))
         }
         detections.bestTrafficDetection(TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT)?.let { _ ->
             return SituationAlert("보행자 신호등 감지", Color.rgb(255, 220, 90))
@@ -253,10 +248,6 @@ class AssistOverlayRenderer {
 
     private fun List<TrafficDetection>.bestTrafficDetection(label: TrafficDetectionLabel): TrafficDetection? {
         return filter { it.label == label }.maxByOrNull { it.confidence }
-    }
-
-    private fun trafficSeconds(detection: TrafficDetection): String {
-        return detection.remainingSeconds?.let { " | ${it}초" }.orEmpty()
     }
 
     private fun primaryGuidance(decision: AssistDecision): String {
@@ -393,7 +384,6 @@ class AssistOverlayRenderer {
 
     private fun drawTrafficDetections(canvas: Canvas, visualization: AssistVisualization) {
         visualization.trafficDetections.forEach { detection ->
-            drawOcrCrop(canvas, detection)
             trafficBoxPaint.color = trafficColor(detection.label)
             val rect = RectF(detection.left, detection.top, detection.right, detection.bottom)
             canvas.drawRoundRect(rect, 8f, 8f, trafficBoxPaint)
@@ -415,22 +405,6 @@ class AssistOverlayRenderer {
         }
     }
 
-    private fun drawOcrCrop(canvas: Canvas, detection: TrafficDetection) {
-        val left = detection.ocrLeft ?: return
-        val top = detection.ocrTop ?: return
-        val right = detection.ocrRight ?: return
-        val bottom = detection.ocrBottom ?: return
-        if (right <= left || bottom <= top) return
-        val rect = RectF(left, top, right, bottom)
-        canvas.drawRoundRect(rect, 10f, 10f, ocrCropPaint)
-        val label = "OCR"
-        val labelWidth = trafficLabelPaint.measureText(label) + 14f
-        val labelBottom = (rect.top - 5f).coerceAtLeast(trafficLabelPaint.textSize + 8f)
-        val labelTop = labelBottom - trafficLabelPaint.textSize - 10f
-        canvas.drawRoundRect(rect.left, labelTop, rect.left + labelWidth, labelBottom, 7f, 7f, trafficLabelBgPaint)
-        canvas.drawText(label, rect.left + 7f, labelBottom - 8f, trafficLabelPaint)
-    }
-
     private fun trafficLabel(detection: TrafficDetection): String {
         val base = when (detection.label) {
             TrafficDetectionLabel.CROSSWALK -> "횡단보도"
@@ -438,8 +412,7 @@ class AssistOverlayRenderer {
             TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT -> "보행신호등"
             TrafficDetectionLabel.RED_LIGHT -> "빨간신호"
         }
-        val timer = detection.remainingSeconds?.let { " | ${it}초" }.orEmpty()
-        return "$base$timer ${(detection.confidence * 100f).toInt()}%"
+        return "$base ${(detection.confidence * 100f).toInt()}%"
     }
 
     private fun trafficColor(label: TrafficDetectionLabel): Int {

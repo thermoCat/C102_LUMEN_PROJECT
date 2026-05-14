@@ -14,7 +14,6 @@ internal object AssistVisualizationBuilder {
 
     fun build(
         frame: ArFrameData,
-        depthLayer: DepthLayerResult,
         semanticEvidence: SemanticCorridorEvidence?,
         curbBoundary: CurbBoundaryEvidence,
         trafficEvidence: TrafficSceneEvidence
@@ -28,7 +27,7 @@ internal object AssistVisualizationBuilder {
                 buildDistanceCurve(frame, AssistConfig.NEAR_ZONE_MM, AssistConfig.NEAR_LABEL),
                 buildDistanceCurve(frame, AssistConfig.PLAN_DISTANCE_MM, AssistConfig.PLAN_LABEL)
             ),
-            depthSectionLines = depthLayer.sectionLines,
+            depthSectionLines = emptyList(),
             selectedSafetyPolygon = buildStraightCorridorPolygon(frame, AssistConfig.USER_HALF_WIDTH_MM, pathForwardMm, false),
             selectedBodyPolygon = buildStraightCorridorPolygon(frame, AssistConfig.USER_HALF_WIDTH_MM, bodyForwardMm, false),
             selectedCenterLine = buildStraightCenterLine(frame, pathForwardMm, false),
@@ -37,8 +36,7 @@ internal object AssistVisualizationBuilder {
         )
         return raw.copy(
             obstaclePolygons = semanticEvidence.orEmptyObstaclePolygons() +
-                curbBoundary.polygons +
-                depthLayer.obstaclePolygons
+                curbBoundary.polygons
         )
     }
 

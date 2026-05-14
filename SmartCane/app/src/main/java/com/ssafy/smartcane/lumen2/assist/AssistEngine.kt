@@ -28,7 +28,7 @@ class AssistEngine {
     ): AssistDecision {
         if (stateEnteredAt == 0L) stateEnteredAt = nowMillis
         val confidence = sensorConfidence(frame)
-        val depthLayer = AssistDepthLayer.analyze(frame)
+        
         val frontEvidence = semanticStabilizer.stabilize(
             evidence = AssistSemanticAnalyzer.analyzeCorridor(frame, 0f),
             nowMillis = nowMillis
@@ -38,7 +38,8 @@ class AssistEngine {
             nowMillis = nowMillis
         )
         val stableTrafficEvidence = trafficStabilizer.stabilize(trafficEvidence, nowMillis)
-        val awareness = buildAwareness(confidence, frame, depthLayer, frontEvidence, curbBoundary, stableTrafficEvidence)
+        
+        val awareness = buildAwareness(confidence, frame, frontEvidence, curbBoundary, stableTrafficEvidence)
         val rawCommand = commandFromAwareness(awareness, confidence)
         val command = stabilize(rawCommand, nowMillis)
         val state = stateFor(command, confidence)
@@ -49,20 +50,28 @@ class AssistEngine {
             currentCommand = command
             stateEnteredAt = nowMillis
         }
-        val visualization = AssistVisualizationBuilder.build(frame, depthLayer, frontEvidence, curbBoundary, stableTrafficEvidence)
+        
+        val visualization = AssistVisualizationBuilder.build(frame, frontEvidence, curbBoundary, stableTrafficEvidence)
 
-        // 교차로/횡단보도 진입 안내 (일반 AssistCommand 음성보다 우선)
+        // 음성 안내 우선순위: 신호등 > 연석 > 카메라 각도
         val intersectionSpeech = intersectionSpeech(stableTrafficEvidence, nowMillis)
         if (intersectionSpeech != null) lastIntersectionSpokenAt = nowMillis
 
+        val curbSpeech = if (curbBoundary.status == CurbBoundaryStatus.DETECTED && nowMillis - lastSpokenAt > 3500L) {
+            "연석이 있습니다. 주의하세요."
+        } else null
+
         val commandSpeechText = commandSpeech(command)
-        val speech = intersectionSpeech ?: commandSpeechText
+        
+        // 사용자의 요청: 연석과 각도 조절만 음성 안내, 나머지는 진동
+        val speech = intersectionSpeech ?: curbSpeech ?: if (command == AssistCommand.CAMERA_ADJUST) commandSpeechText else null
+        
         val shouldSpeak = speech != null && (
-            intersectionSpeech != null ||
-            (commandSpeechText != null && shouldSpeak(state, changed, nowMillis))
+            intersectionSpeech != null || curbSpeech != null || (command == AssistCommand.CAMERA_ADJUST && shouldSpeak(state, changed, nowMillis))
         )
         if (shouldSpeak && intersectionSpeech == null) lastSpokenAt = nowMillis
 
+        // 장애물 관련(정지, 옆공간 등)은 진동으로만 알림
         val shouldVibrate = state != AssistState.NORMAL && shouldVibrate(state, changed, nowMillis)
         if (shouldVibrate) lastVibratedAt = nowMillis
 
@@ -82,7 +91,6 @@ class AssistEngine {
     private fun buildAwareness(
         confidence: SensorConfidence,
         frame: ArFrameData,
-        depthLayer: DepthLayerResult,
         frontEvidence: SemanticCorridorEvidence?,
         curbBoundary: CurbBoundaryEvidence,
         trafficEvidence: TrafficSceneEvidence
@@ -94,10 +102,10 @@ class AssistEngine {
                 rightSpace = SideSpaceStatus.UNKNOWN,
                 curbBoundary = CurbBoundaryStatus.UNKNOWN,
                 trafficScene = TrafficSceneStatus.UNKNOWN,
-                depthAnomaly = depthLayer.status,
+                depthAnomaly = DepthAnomalyStatus.UNKNOWN,
                 frontReason = confidence.unstableReason ?: "low confidence",
                 sideHintReason = null,
-                depthReason = depthLayer.reason
+                depthReason = null
             )
         }
 
@@ -109,10 +117,10 @@ class AssistEngine {
                 rightSpace = SideSpaceStatus.UNKNOWN,
                 curbBoundary = curbBoundary.status,
                 trafficScene = trafficEvidence.status,
-                depthAnomaly = depthLayer.status,
+                depthAnomaly = DepthAnomalyStatus.UNKNOWN,
                 frontReason = guideRange.reason,
                 sideHintReason = null,
-                depthReason = depthLayer.reason
+                depthReason = null
             )
         }
 
@@ -137,10 +145,10 @@ class AssistEngine {
             rightSpace = rightSpace,
             curbBoundary = curbBoundary.status,
             trafficScene = trafficEvidence.status,
-            depthAnomaly = depthLayer.status,
+            depthAnomaly = DepthAnomalyStatus.CLEAR,
             frontReason = corridor.reason ?: "semantic corridor unknown",
             sideHintReason = sideHint,
-            depthReason = depthLayer.reason
+            depthReason = null
         )
     }
 
@@ -161,9 +169,7 @@ class AssistEngine {
         if (awareness.frontStatus == FrontStatus.CAUTION) {
             return AssistCommand.FRONT_CAUTION
         }
-        if (awareness.depthAnomaly != DepthAnomalyStatus.CLEAR && awareness.depthAnomaly != DepthAnomalyStatus.UNKNOWN) {
-            return AssistCommand.DEPTH_CAUTION
-        }
+        // DepthAnomaly 관련 조건 삭제
         return AssistCommand.KEEP
     }
 
@@ -413,22 +419,16 @@ class AssistEngine {
         if (!hasCrosswalk) return null
         if (now - lastIntersectionSpokenAt < INTERSECTION_SPEECH_COOLDOWN) return null
 
-        return when (evidence.intersectionContext) {
-            IntersectionContext.INTERSECTION -> when (evidence.status) {
-                TrafficSceneStatus.GREEN_LIGHT -> "교차로입니다. 초록불입니다. 건너세요."
-                TrafficSceneStatus.RED_LIGHT   -> "교차로입니다. 빨간불입니다. 대기하세요."
-                else                           -> "교차로 횡단보도입니다."
-            }
-            IntersectionContext.T_JUNCTION -> when (evidence.status) {
-                TrafficSceneStatus.GREEN_LIGHT -> "삼거리입니다. 초록불입니다. 건너세요."
-                TrafficSceneStatus.RED_LIGHT   -> "삼거리입니다. 빨간불입니다. 대기하세요."
-                else                           -> "삼거리 횡단보도입니다."
-            }
-            IntersectionContext.NONE -> when (evidence.status) {
-                TrafficSceneStatus.GREEN_LIGHT -> "횡단보도입니다. 초록불입니다. 건너세요."
-                TrafficSceneStatus.RED_LIGHT   -> "횡단보도입니다. 빨간불입니다. 대기하세요."
-                else                           -> "횡단보도가 감지됩니다."
-            }
+        val prefix = when (evidence.intersectionContext) {
+            IntersectionContext.INTERSECTION -> "교차로 "
+            IntersectionContext.T_JUNCTION -> "삼거리 "
+            else -> ""
+        }
+
+        return when (evidence.status) {
+            TrafficSceneStatus.GREEN_LIGHT -> "${prefix}초록불이 켜졌습니다. 건너가도 좋습니다."
+            TrafficSceneStatus.RED_LIGHT   -> "${prefix}빨간불입니다. 잠시 기다려주세요."
+            else                           -> "${prefix}횡단보도 앞입니다. 신호를 확인 중입니다."
         }
     }
 
