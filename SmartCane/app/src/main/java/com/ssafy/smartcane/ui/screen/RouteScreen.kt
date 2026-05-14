@@ -151,6 +151,7 @@ private const val MAX_FALLBACK_ROUTE_LOCATION_ACCURACY_METERS = 120f
 private const val REROUTE_COOLDOWN_MS = 30_000L
 private const val ROUTE_BEARING_LOOKAHEAD_METERS = 12f
 private const val ROUTE_VIBRATION_COOLDOWN_MS = 2_000L
+private const val NAVIGATION_ARRIVAL_STEP_DISTANCE_METERS = 5f
 
 @Composable
 fun RouteScreen(
@@ -1007,6 +1008,18 @@ private fun MapNavView(
     val routeSteps = remember(routePlan, originName, destName) {
         routePlan.toNavigationSteps(originName, destName)
     }
+    val autoStepIndex = remember(routePlan, routeMatch?.traveledDistanceMeters, routeMatch?.remainingDistanceMeters) {
+        routePlan.currentNavigationStepIndex(routeMatch)
+    }
+
+    LaunchedEffect(autoStepIndex, routeSteps.size) {
+        val maxIndex = (routeSteps.size - 1).coerceAtLeast(0)
+        currentStepIndex = autoStepIndex.coerceIn(0, maxIndex)
+        Log.d(
+            ROUTE_TAG,
+            "Navigation step auto index=$currentStepIndex traveled=${routeMatch?.traveledDistanceMeters} remaining=${routeMatch?.remainingDistanceMeters}"
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -1265,6 +1278,23 @@ private fun WalkingRoutePlan?.toNavigationSteps(originName: String, destName: St
     }
 }
 
+private fun WalkingRoutePlan?.currentNavigationStepIndex(routeMatch: RouteMatchResult?): Int {
+    val plan = this ?: return 0
+    val match = routeMatch ?: return 0
+    if (match.remainingDistanceMeters <= NAVIGATION_ARRIVAL_STEP_DISTANCE_METERS) {
+        return plan.instructions.size + 1
+    }
+
+    var accumulated = 0f
+    plan.instructions.forEachIndexed { index, instruction ->
+        accumulated += instruction.distanceMeters
+        if (match.traveledDistanceMeters <= accumulated) {
+            return index + 1
+        }
+    }
+    return plan.instructions.size + 1
+}
+
 @Composable
 private fun RouteMapView(
     currentLocation: Location?,
@@ -1303,6 +1333,7 @@ private fun RouteMapView(
     var mapError by remember { mutableStateOf("") }
     var lastFocusedRouteKey by remember { mutableStateOf("") }
     var lastDrawnRouteKey by remember { mutableStateOf("") }
+    var lastAutoFocusedCurrentKey by remember { mutableStateOf("") }
     var lastHandledFocusRequest by remember { mutableStateOf(currentFocusRequest) }
     val latestRoutePoints by rememberUpdatedState(routePoints)
     val latestLocation by rememberUpdatedState(currentLocation)
@@ -1417,6 +1448,11 @@ private fun RouteMapView(
                             position = position,
                             iconRes = R.drawable.ic_location_target
                         )
+                        val currentKey = position.positionKey()
+                        if (currentKey != lastAutoFocusedCurrentKey) {
+                            map.focusOnCurrentLocation(position)
+                            lastAutoFocusedCurrentKey = currentKey
+                        }
                     }
                     destination?.toLatLngOrNull()?.let { position ->
                         destinationLabel = map.addOrMoveLabel(
@@ -1566,6 +1602,16 @@ private fun KakaoMap.focusOnCurrentLocation(point: RoutePoint) {
         CameraAnimation.from(250)
     )
 }
+
+private fun KakaoMap.focusOnCurrentLocation(position: LatLng) {
+    moveCamera(
+        CameraUpdateFactory.newCenterPosition(position, 17),
+        CameraAnimation.from(250)
+    )
+}
+
+private fun LatLng.positionKey(): String =
+    String.format(Locale.US, "%.6f,%.6f", latitude, longitude)
 
 private fun RouteDestination.toLatLngOrNull(): LatLng? {
     val lat = latitude ?: return null
