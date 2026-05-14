@@ -111,12 +111,7 @@ data class TrafficDetection(
     val left: Float,
     val top: Float,
     val right: Float,
-    val bottom: Float,
-    val remainingSeconds: Int? = null,
-    val ocrLeft: Float? = null,
-    val ocrTop: Float? = null,
-    val ocrRight: Float? = null,
-    val ocrBottom: Float? = null
+    val bottom: Float
 )
 
 enum class TrafficDetectionLabel {

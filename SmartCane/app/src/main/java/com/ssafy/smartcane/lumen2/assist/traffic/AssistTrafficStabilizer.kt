@@ -47,8 +47,7 @@ internal class AssistTrafficStabilizer {
             top = blend(previous.top, top),
             right = blend(previous.right, right),
             bottom = blend(previous.bottom, bottom),
-            confidence = max(previous.confidence * 0.85f, confidence),
-            remainingSeconds = remainingSeconds ?: previous.remainingSeconds
+            confidence = max(previous.confidence * 0.85f, confidence)
         )
     }
 

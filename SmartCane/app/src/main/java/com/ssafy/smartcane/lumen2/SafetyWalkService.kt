@@ -85,6 +85,7 @@ class SafetyWalkService : Service() {
     private lateinit var proximityController: ProximityVibrationController
     private var tts: android.speech.tts.TextToSpeech? = null
     private var ttsReady = false
+    @Volatile private var latestTrafficEvidence = TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList())
     @Volatile private var lastCrosswalkSpokenAt = 0L
     private val CROSSWALK_TTS_COOLDOWN = 8000L
 
@@ -209,47 +210,49 @@ class SafetyWalkService : Service() {
         }
         tfliteRunner?.let { runner ->
             hazardAnalyzer = HazardDetectionAnalyzer(this, hazardScope) { bitmap ->
-                com.ssafy.smartcane.util.AppLogger.log(TAG, "detect 람다 호출 bitmap=${bitmap.width}x${bitmap.height}")
                 val all = runner.detectAll(bitmap)
 
-                // 횡단보도 감지 시 교차로 여부 판단 + TTS 안내
-                val crosswalk = all.firstOrNull { it.label == "crosswalk" }
-                if (crosswalk != null) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastCrosswalkSpokenAt > CROSSWALK_TTS_COOLDOWN) {
-                        val loc = com.ssafy.smartcane.util.LocationHelper.getLastKnownLocation(this@SafetyWalkService)
-                        if (loc != null) {
-                            val nodeCount = com.ssafy.smartcane.intersection.IntersectionDetector
-                                .nearbyNodeCount(loc.first, loc.second)
-                            val speech = when {
-                                nodeCount >= 3 -> "교차로 횡단보도입니다."
-                                nodeCount == 2 -> "삼거리 횡단보도입니다."
-                                else           -> "횡단보도가 감지됩니다."
-                            }
-                            com.ssafy.smartcane.util.AppLogger.log(TAG,
-                                "횡단보도 감지 (${(crosswalk.confidence*100).toInt()}%) → $speech (노드 ${nodeCount}개)")
-                            if (ttsReady) {
-                                tts?.speak(speech, android.speech.tts.TextToSpeech.QUEUE_ADD, null, "crosswalk-${now}")
-                                lastCrosswalkSpokenAt = now
-                            }
-                        }
-                    }
+                // 횡단보도 및 신호등 감지 결과 처리 (AssistEngine 전달용)
+                val detections = all.map { 
+                    com.ssafy.smartcane.lumen2.assist.TrafficDetection(
+                        label = when(it.label) {
+                            "crosswalk" -> com.ssafy.smartcane.lumen2.assist.TrafficDetectionLabel.CROSSWALK
+                            "green_light" -> com.ssafy.smartcane.lumen2.assist.TrafficDetectionLabel.GREEN_LIGHT
+                            "red_light" -> com.ssafy.smartcane.lumen2.assist.TrafficDetectionLabel.RED_LIGHT
+                            else -> com.ssafy.smartcane.lumen2.assist.TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT
+                        },
+                        confidence = it.confidence,
+                        left = it.x1, top = it.y1, right = it.x2, bottom = it.y2
+                    )
                 }
 
-                // 위험 클래스 필터 후 최고 confidence 선택
+                val status = when {
+                    all.any { it.label == "green_light" } -> TrafficSceneStatus.GREEN_LIGHT
+                    all.any { it.label == "red_light" } -> TrafficSceneStatus.RED_LIGHT
+                    all.any { it.label == "crosswalk" } -> TrafficSceneStatus.CROSSWALK
+                    else -> TrafficSceneStatus.CLEAR
+                }
+
+                val intersectionCtx = if (status != TrafficSceneStatus.CLEAR) {
+                    val loc = com.ssafy.smartcane.util.LocationHelper.getLastKnownLocation(this@SafetyWalkService)
+                    if (loc != null) {
+                        val nodeCount = com.ssafy.smartcane.intersection.IntersectionDetector
+                            .nearbyNodeCount(loc.first, loc.second)
+                        when {
+                            nodeCount >= 3 -> com.ssafy.smartcane.lumen2.assist.IntersectionContext.INTERSECTION
+                            nodeCount == 2 -> com.ssafy.smartcane.lumen2.assist.IntersectionContext.T_JUNCTION
+                            else           -> com.ssafy.smartcane.lumen2.assist.IntersectionContext.NONE
+                        }
+                    } else com.ssafy.smartcane.lumen2.assist.IntersectionContext.NONE
+                } else com.ssafy.smartcane.lumen2.assist.IntersectionContext.NONE
+
+                latestTrafficEvidence = TrafficSceneEvidence(status, detections, intersectionCtx)
+
+                // 위험 클래스 필터 후 최고 confidence 선택 (백엔드 신고용)
                 val result = all
                     .filter { HazardType.fromTfliteLabel(it.label) != null }
                     .maxByOrNull { it.confidence }
-                if (result == null) {
-                    if (all.isNotEmpty()) {
-                        val top = all.maxByOrNull { it.confidence }!!
-                        com.ssafy.smartcane.util.AppLogger.log(TAG, "위험 클래스 없음 (최고: ${top.label} ${(top.confidence*100).toInt()}%)")
-                    } else {
-                        com.ssafy.smartcane.util.AppLogger.log(TAG, "감지 없음 (클래스별 threshold 미달)")
-                    }
-                } else {
-                    com.ssafy.smartcane.util.AppLogger.log(TAG, "위험 감지: ${result.label} ${(result.confidence*100).toInt()}%")
-                }
+                
                 result?.let { res ->
                     HazardDetectionAnalyzer.DetectionResult(res.label, res.confidence)
                 }
@@ -382,8 +385,13 @@ class SafetyWalkService : Service() {
                 cameraFailCount = 0
 
                 val arData = readFrameData(frame) ?: continue
-                val decision = assistEngine.update(arData, TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList()))
+                val decision = assistEngine.update(arData, latestTrafficEvidence)
                 proximityController.update(decision)
+
+                // 음향신호기 및 보행 안내 TTS
+                if (decision.shouldSpeak && decision.speech != null && ttsReady) {
+                    tts?.speak(decision.speech, android.speech.tts.TextToSpeech.QUEUE_ADD, null, "assist-${System.currentTimeMillis()}")
+                }
 
                 // TFLite 위험 감지
                 // 이미지 취득(bgThread) → 변환+추론(tfliteExecutor 분리) → bgThread 블로킹 없음
