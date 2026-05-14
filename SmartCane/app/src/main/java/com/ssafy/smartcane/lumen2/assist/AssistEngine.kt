@@ -41,10 +41,6 @@ class AssistEngine {
         
         val awareness = buildAwareness(confidence, frame, frontEvidence, curbBoundary, stableTrafficEvidence)
         
-        // 시각화를 위해 좌우 분석 데이터도 수집 (정면이 막히지 않았어도 시각화용으로 수집)
-        val leftEvidence = AssistSemanticAnalyzer.analyzeSideFan(frame, left = true)
-        val rightEvidence = AssistSemanticAnalyzer.analyzeSideFan(frame, left = false)
-        
         val rawCommand = commandFromAwareness(awareness, confidence)
         val command = stabilize(rawCommand, nowMillis)
         val state = stateFor(command, confidence)
@@ -59,8 +55,6 @@ class AssistEngine {
         val visualization = AssistVisualizationBuilder.build(
             frame = frame,
             semanticEvidence = frontEvidence,
-            leftEvidence = leftEvidence,
-            rightEvidence = rightEvidence,
             curbBoundary = curbBoundary,
             trafficEvidence = stableTrafficEvidence
         )
@@ -110,74 +104,44 @@ class AssistEngine {
         if (confidence.confidence < 0.30f) {
             return AwarenessSnapshot(
                 frontStatus = FrontStatus.UNKNOWN,
-                leftSpace = SideSpaceStatus.UNKNOWN,
-                rightSpace = SideSpaceStatus.UNKNOWN,
                 curbBoundary = CurbBoundaryStatus.UNKNOWN,
                 trafficScene = TrafficSceneStatus.UNKNOWN,
                 depthAnomaly = DepthAnomalyStatus.UNKNOWN,
                 frontReason = confidence.unstableReason ?: "low confidence",
-                sideHintReason = null,
                 depthReason = null
             )
         }
 
         val guideRange = guideRangeVisibility(frame)
-        if (!guideRange.immediateVisible && !guideRange.nearVisible && !guideRange.farVisible) {
+        if (!guideRange.farVisible) {
             return AwarenessSnapshot(
                 frontStatus = FrontStatus.UNKNOWN,
-                leftSpace = SideSpaceStatus.UNKNOWN,
-                rightSpace = SideSpaceStatus.UNKNOWN,
                 curbBoundary = curbBoundary.status,
                 trafficScene = trafficEvidence.status,
                 depthAnomaly = DepthAnomalyStatus.UNKNOWN,
                 frontReason = guideRange.reason,
-                sideHintReason = null,
                 depthReason = null
             )
         }
 
         val corridor = assessSemanticCorridor(frontEvidence, guideRange)
         val frontStatus = corridor.status ?: FrontStatus.UNKNOWN
-        val shouldCheckSideSpace = frontStatus == FrontStatus.BLOCKED
-        val leftSpace = if (shouldCheckSideSpace) {
-            assessSideNearSemanticFan(frame, left = true)
-        } else {
-            SideSpaceStatus.UNKNOWN
-        }
-        val rightSpace = if (shouldCheckSideSpace) {
-            assessSideNearSemanticFan(frame, left = false)
-        } else {
-            SideSpaceStatus.UNKNOWN
-        }
-        val sideHint = sideHintReason(frontStatus, leftSpace, rightSpace)
 
         return AwarenessSnapshot(
             frontStatus = frontStatus,
-            leftSpace = leftSpace,
-            rightSpace = rightSpace,
             curbBoundary = curbBoundary.status,
             trafficScene = trafficEvidence.status,
             depthAnomaly = DepthAnomalyStatus.CLEAR,
             frontReason = corridor.reason ?: "semantic corridor unknown",
-            sideHintReason = sideHint,
             depthReason = null
         )
     }
 
     private fun commandFromAwareness(awareness: AwarenessSnapshot, confidence: SensorConfidence): AssistCommand {
-        if (awareness.frontReason.startsWith("guide range") ||
-            awareness.frontReason == "near corridor not visible"
-        ) return AssistCommand.CAMERA_ADJUST
+        if (awareness.frontReason.startsWith("guide range")) return AssistCommand.CAMERA_ADJUST
         if (confidence.confidence < 0.30f || awareness.frontStatus == FrontStatus.UNKNOWN) return AssistCommand.SYSTEM_UNSTABLE
         if (awareness.frontStatus == FrontStatus.CRITICAL) return AssistCommand.STOP
-        if (awareness.frontStatus == FrontStatus.BLOCKED) {
-            return when {
-                awareness.rightSpace == SideSpaceStatus.AVAILABLE && awareness.leftSpace != SideSpaceStatus.AVAILABLE -> AssistCommand.RIGHT_SPACE
-                awareness.leftSpace == SideSpaceStatus.AVAILABLE && awareness.rightSpace != SideSpaceStatus.AVAILABLE -> AssistCommand.LEFT_SPACE
-                awareness.rightSpace == SideSpaceStatus.AVAILABLE && awareness.leftSpace == SideSpaceStatus.AVAILABLE -> AssistCommand.BOTH_SIDE_SPACE
-                else -> AssistCommand.FRONT_LIMIT
-            }
-        }
+        if (awareness.frontStatus == FrontStatus.BLOCKED) return AssistCommand.FRONT_LIMIT
         if (awareness.frontStatus == FrontStatus.CAUTION) {
             return AssistCommand.FRONT_CAUTION
         }
@@ -190,13 +154,6 @@ class AssistEngine {
             candidateCommand = null
             return raw
         }
-        val currentIsSide = currentCommand == AssistCommand.LEFT_SPACE || currentCommand == AssistCommand.RIGHT_SPACE
-        val rawIsOppositeSide = (currentCommand == AssistCommand.LEFT_SPACE && raw == AssistCommand.RIGHT_SPACE) ||
-            (currentCommand == AssistCommand.RIGHT_SPACE && raw == AssistCommand.LEFT_SPACE)
-        if (currentIsSide && rawIsOppositeSide && now - stateEnteredAt < 2200L) {
-            candidateCommand = null
-            return currentCommand
-        }
         if (raw == currentCommand) {
             candidateCommand = null
             return currentCommand
@@ -206,7 +163,6 @@ class AssistEngine {
             AssistCommand.FRONT_CAUTION,
             AssistCommand.FRONT_LIMIT,
             AssistCommand.DEPTH_CAUTION -> 0L
-            AssistCommand.LEFT_SPACE, AssistCommand.RIGHT_SPACE, AssistCommand.BOTH_SIDE_SPACE -> 600L
             AssistCommand.CAMERA_ADJUST -> 800L
             else -> 900L
         }
@@ -232,82 +188,31 @@ class AssistEngine {
             return ForwardCorridorAssessment(FrontStatus.UNKNOWN, "semantic corridor low evidence")
         }
 
-        val immediateNonWalkable = semanticEvidence.immediate.visible &&
-            guideRange.immediateVisible &&
-            semanticEvidence.immediate.blocked
-        val nearNonWalkable = semanticEvidence.near.visible &&
-            guideRange.nearVisible &&
-            semanticEvidence.near.blocked
-        val planNonWalkable = semanticEvidence.plan.visible &&
-            guideRange.farVisible &&
-            semanticEvidence.plan.blocked
-        val anyVisibleZone = (guideRange.immediateVisible && semanticEvidence.immediate.visible) ||
-            (guideRange.nearVisible && semanticEvidence.near.visible) ||
-            (guideRange.farVisible && semanticEvidence.plan.visible)
+        val corridorVisible = guideRange.farVisible && semanticEvidence.immediate.visible
 
         return when {
-            immediateNonWalkable -> ForwardCorridorAssessment(
-                FrontStatus.CRITICAL,
-                "corridor immediate non-walkable"
-            )
-            nearNonWalkable -> ForwardCorridorAssessment(
+            corridorVisible && semanticEvidence.immediate.blocked -> ForwardCorridorAssessment(
                 FrontStatus.BLOCKED,
-                "corridor near non-walkable"
+                "2m corridor non-walkable"
             )
-            planNonWalkable -> ForwardCorridorAssessment(
-                FrontStatus.CAUTION,
-                "corridor plan non-walkable"
-            )
-            guideRange.nearVisible && semanticEvidence.near.visible -> ForwardCorridorAssessment(
-                FrontStatus.CLEAR,
-                "corridor clear"
-            )
-            anyVisibleZone -> ForwardCorridorAssessment(
-                FrontStatus.CLEAR,
-                "visible corridor clear"
-            )
-            !guideRange.nearVisible || !semanticEvidence.near.visible -> ForwardCorridorAssessment(
+            !corridorVisible -> ForwardCorridorAssessment(
                 FrontStatus.UNKNOWN,
-                "near corridor not visible"
+                "2m corridor not visible"
             )
             else -> ForwardCorridorAssessment(
                 FrontStatus.CLEAR,
-                "visible corridor clear"
+                "2m corridor clear"
             )
-        }
-    }
-
-    private fun assessSideNearSemanticFan(frame: ArFrameData, left: Boolean): SideSpaceStatus {
-        val evidence = AssistSemanticAnalyzer.analyzeSideFan(frame, left)
-            ?: return SideSpaceStatus.AVAILABLE 
-            
-        // 시각화와 일치시키기 위해: 단 하나의 장애물(빨간색/노란색)이라도 그려지면 BLOCKED로 판단
-        return if (evidence.immediate.blocked || evidence.near.blocked) {
-            SideSpaceStatus.BLOCKED
-        } else {
-            // 막힘이 없거나, 영역이 화면 밖이라 샘플이 0개인 경우 모두 AVAILABLE
-            SideSpaceStatus.AVAILABLE
         }
     }
 
     private fun guideRangeVisibility(frame: ArFrameData, centerLateralMm: Float = 0f): GuideRangeVisibility {
-        val immediate = distanceArcVisible(frame, centerLateralMm, AssistConfig.IMMEDIATE_ZONE_MM)
-        val near = distanceArcVisible(frame, centerLateralMm, AssistConfig.NEAR_ZONE_MM)
-        val far = distanceArcVisible(frame, centerLateralMm, AssistConfig.PLAN_DISTANCE_MM)
+        val visible = distanceArcVisible(frame, centerLateralMm, AssistConfig.PLAN_DISTANCE_MM)
         return GuideRangeVisibility(
-            immediateVisible = immediate,
-            nearVisible = near,
-            farVisible = far,
-            reason = when {
-                immediate && near && far -> "guide range visible"
-                !immediate && !near && !far -> "guide range ${AssistConfig.IMMEDIATE_LABEL}, ${AssistConfig.NEAR_LABEL} and ${AssistConfig.PLAN_LABEL} not visible"
-                !immediate && !near -> "guide range ${AssistConfig.IMMEDIATE_LABEL} and ${AssistConfig.NEAR_LABEL} not visible"
-                !immediate && !far -> "guide range ${AssistConfig.IMMEDIATE_LABEL} and ${AssistConfig.PLAN_LABEL} not visible"
-                !near && !far -> "guide range ${AssistConfig.NEAR_LABEL} and ${AssistConfig.PLAN_LABEL} not visible"
-                !immediate -> "guide range ${AssistConfig.IMMEDIATE_LABEL} not visible"
-                !near -> "guide range ${AssistConfig.NEAR_LABEL} not visible"
-                else -> "guide range ${AssistConfig.PLAN_LABEL} not visible"
-            }
+            immediateVisible = visible,
+            nearVisible = visible,
+            farVisible = visible,
+            reason = if (visible) "guide range visible" else "guide range ${AssistConfig.PLAN_LABEL} not visible"
         )
     }
 
@@ -332,16 +237,6 @@ class AssistEngine {
             ?.let { AssistGeometry.insideView(frame, it) } ?: false
         return centerVisible && total > 0 &&
             visible.toFloat() / total.toFloat() >= MIN_DISTANCE_ARC_VISIBLE_RATIO
-    }
-
-    private fun sideHintReason(front: FrontStatus, left: SideSpaceStatus, right: SideSpaceStatus): String? {
-        if (front != FrontStatus.BLOCKED) return null
-        return when {
-            left == SideSpaceStatus.AVAILABLE && right != SideSpaceStatus.AVAILABLE -> "left has clearer space"
-            right == SideSpaceStatus.AVAILABLE && left != SideSpaceStatus.AVAILABLE -> "right has clearer space"
-            left == SideSpaceStatus.AVAILABLE && right == SideSpaceStatus.AVAILABLE -> "both sides have space"
-            else -> null
-        }
     }
 
     private fun sensorConfidence(frame: ArFrameData): SensorConfidence {
@@ -377,13 +272,10 @@ class AssistEngine {
 
     private fun stateFor(command: AssistCommand, confidence: SensorConfidence): AssistState {
         return when (command) {
-            AssistCommand.KEEP -> if (currentState in listOf(AssistState.CAUTION, AssistState.SIDE_SPACE_LEFT, AssistState.SIDE_SPACE_RIGHT, AssistState.CRITICAL_STOP)) AssistState.RECOVERY else AssistState.NORMAL
+            AssistCommand.KEEP -> if (currentState in listOf(AssistState.CAUTION, AssistState.CRITICAL_STOP)) AssistState.RECOVERY else AssistState.NORMAL
             AssistCommand.FRONT_CAUTION,
             AssistCommand.FRONT_LIMIT,
             AssistCommand.DEPTH_CAUTION -> if (confidence.unstableReason != null && confidence.confidence < 0.38f) AssistState.SYSTEM_UNSTABLE else AssistState.CAUTION
-            AssistCommand.LEFT_SPACE -> AssistState.SIDE_SPACE_LEFT
-            AssistCommand.RIGHT_SPACE -> AssistState.SIDE_SPACE_RIGHT
-            AssistCommand.BOTH_SIDE_SPACE -> AssistState.SIDE_SPACE_BOTH
             AssistCommand.STOP -> AssistState.CRITICAL_STOP
             AssistCommand.CAMERA_ADJUST -> AssistState.CAMERA_ADJUST
             AssistCommand.SYSTEM_UNSTABLE -> AssistState.SYSTEM_UNSTABLE
@@ -395,7 +287,6 @@ class AssistEngine {
             AssistState.CRITICAL_STOP -> 900L
             AssistState.SYSTEM_UNSTABLE -> 5000L
             AssistState.CAMERA_ADJUST -> 4500L
-            AssistState.SIDE_SPACE_LEFT, AssistState.SIDE_SPACE_RIGHT, AssistState.SIDE_SPACE_BOTH -> 3200L
             else -> 2600L
         }
         return (changed || state == AssistState.CRITICAL_STOP) && now - lastSpokenAt > cooldown
@@ -406,10 +297,10 @@ class AssistEngine {
         // "가까울수록 자주, 멀수록 한 번" 원칙.
         val cooldown = when (state) {
             AssistState.CRITICAL_STOP  -> 1000L   // 1초마다 반복 (너무 빠르면 패닉 유발)
-            AssistState.CAUTION        -> 2000L   // 상태 변화 시 1회 (1.5m → 사용자 이미 인지 중)
+            AssistState.CAUTION        -> 2000L
             AssistState.CAMERA_ADJUST,
             AssistState.SYSTEM_UNSTABLE -> return false  // 진동 없음 (노이즈)
-            else                       -> 99_999L  // SIDE_SPACE, DEPTH_CAUTION → 사실상 changed 시 1회만
+            else                       -> 99_999L
         }
         return (changed || state == AssistState.CRITICAL_STOP) && now - lastVibratedAt > cooldown
     }
@@ -417,7 +308,6 @@ class AssistEngine {
     private fun decisionReason(awareness: AwarenessSnapshot, confidence: SensorConfidence): String {
         return confidence.unstableReason ?: listOfNotNull(
             awareness.frontReason,
-            awareness.sideHintReason,
             awareness.depthReason
         ).joinToString(" / ")
     }
@@ -445,10 +335,7 @@ class AssistEngine {
     private fun commandSpeech(command: AssistCommand): String? {
         return when (command) {
             AssistCommand.STOP -> "정지"
-            AssistCommand.FRONT_LIMIT -> "전방 제한 - 양측 제한"
-            AssistCommand.LEFT_SPACE -> "전방 제한 - 왼쪽 여유"
-            AssistCommand.RIGHT_SPACE -> "전방 제한 - 오른쪽 여유"
-            AssistCommand.BOTH_SIDE_SPACE -> "전방 제한 - 양측 여유"
+            AssistCommand.FRONT_LIMIT -> "전방 제한"
             AssistCommand.FRONT_CAUTION -> "정면 주의"
             AssistCommand.DEPTH_CAUTION -> "거리 이상 감지"
             AssistCommand.CAMERA_ADJUST -> "카메라를 조금 아래로"

@@ -47,9 +47,6 @@ class AssistFeedbackController(context: Context) : TextToSpeech.OnInitListener {
             AssistState.SYSTEM_UNSTABLE -> longArrayOf(0, 120, 160, 120)
             AssistState.CAUTION -> longArrayOf(0, 90, 100, 90)
             AssistState.CAMERA_ADJUST -> longArrayOf(0, 110, 140, 110)
-            AssistState.SIDE_SPACE_LEFT -> longArrayOf(0, 80, 90, 250)
-            AssistState.SIDE_SPACE_RIGHT -> longArrayOf(0, 250, 90, 80)
-            AssistState.SIDE_SPACE_BOTH -> longArrayOf(0, 90, 80, 90)
             AssistState.RECOVERY -> longArrayOf(0, 70)
             AssistState.NORMAL -> return
         }

@@ -9,16 +9,9 @@ internal object AssistSemanticAnalyzer {
     private const val MIN_ZONE_SAMPLES = 6
     private const val MIN_COMPONENT_CELLS = 1
     private const val MIN_COMPONENT_SPAN_PX = 0f
-    private const val SIDE_FAN_INNER_DEG = 16f
-    private const val SIDE_FAN_OUTER_DEG = 58f
-    private const val SIDE_FAN_STEP_DEG = 6f
 
     fun analyzeCorridor(frame: ArFrameData, centerLateralMm: Float): SemanticCorridorEvidence? {
         return analyzeWithZones(frame, buildCorridorZones(frame, centerLateralMm))
-    }
-
-    fun analyzeSideFan(frame: ArFrameData, left: Boolean): SemanticCorridorEvidence? {
-        return analyzeWithZones(frame, buildSideFanZones(frame, left))
     }
 
     private fun analyzeWithZones(
@@ -86,52 +79,12 @@ internal object AssistSemanticAnalyzer {
                     frame = frame,
                     centerLateralMm = centerLateralMm,
                     nearForwardMm = AssistConfig.ANCHOR_FORWARD_MM,
-                    farForwardMm = AssistConfig.IMMEDIATE_ZONE_MM
-                )
-            ),
-            SemanticDistanceZone.NEAR to MutableZoneEvidence(
-                zone = SemanticDistanceZone.NEAR,
-                polygon = buildScreenCorridorBand(
-                    frame = frame,
-                    centerLateralMm = centerLateralMm,
-                    nearForwardMm = AssistConfig.IMMEDIATE_ZONE_MM,
-                    farForwardMm = AssistConfig.NEAR_ZONE_MM
-                )
-            ),
-            SemanticDistanceZone.PLAN to MutableZoneEvidence(
-                zone = SemanticDistanceZone.PLAN,
-                polygon = buildScreenCorridorBand(
-                    frame = frame,
-                    centerLateralMm = centerLateralMm,
-                    nearForwardMm = AssistConfig.NEAR_ZONE_MM,
                     farForwardMm = AssistConfig.PLAN_DISTANCE_MM
                 )
-            )
-        )
-    }
-
-    private fun buildSideFanZones(
-        frame: ArFrameData,
-        left: Boolean
-    ): Map<SemanticDistanceZone, MutableZoneEvidence> {
-        return mapOf(
-            SemanticDistanceZone.IMMEDIATE to MutableZoneEvidence(
-                zone = SemanticDistanceZone.IMMEDIATE,
-                polygon = buildSideFanBand(
-                    frame = frame,
-                    left = left,
-                    nearForwardMm = AssistConfig.ANCHOR_FORWARD_MM,
-                    farForwardMm = AssistConfig.IMMEDIATE_ZONE_MM
-                )
             ),
             SemanticDistanceZone.NEAR to MutableZoneEvidence(
                 zone = SemanticDistanceZone.NEAR,
-                polygon = buildSideFanBand(
-                    frame = frame,
-                    left = left,
-                    nearForwardMm = AssistConfig.IMMEDIATE_ZONE_MM,
-                    farForwardMm = AssistConfig.NEAR_ZONE_MM
-                )
+                polygon = emptyList()
             ),
             SemanticDistanceZone.PLAN to MutableZoneEvidence(
                 zone = SemanticDistanceZone.PLAN,
@@ -153,54 +106,6 @@ internal object AssistSemanticAnalyzer {
             farForwardMm = farForwardMm,
             contentOnly = false
         )
-    }
-
-    private fun buildSideFanBand(
-        frame: ArFrameData,
-        left: Boolean,
-        nearForwardMm: Float,
-        farForwardMm: Float
-    ): List<PointF> {
-        val sign = if (left) -1f else 1f
-        val near = if (nearForwardMm <= AssistConfig.ANCHOR_FORWARD_MM + 0.001f) {
-            anchorStartEdge(frame, left)
-        } else {
-            fanArc(frame, sign, nearForwardMm).reversed()
-        }
-        val far = fanArc(frame, sign, farForwardMm)
-        return near + far
-    }
-
-    private fun anchorStartEdge(frame: ArFrameData, left: Boolean): List<PointF> {
-        val start = AssistConfig.ANCHOR_FORWARD_MM
-        return if (left) {
-            listOfNotNull(
-                AssistGeometry.guidePointToView(frame, AssistConfig.USER_HALF_WIDTH_MM, start, contentOnly = false),
-                AssistGeometry.guidePointToView(frame, -AssistConfig.USER_HALF_WIDTH_MM, start, contentOnly = false)
-            )
-        } else {
-            listOfNotNull(
-                AssistGeometry.guidePointToView(frame, -AssistConfig.USER_HALF_WIDTH_MM, start, contentOnly = false),
-                AssistGeometry.guidePointToView(frame, AssistConfig.USER_HALF_WIDTH_MM, start, contentOnly = false)
-            )
-        }
-    }
-
-    private fun fanArc(frame: ArFrameData, sign: Float, radialMm: Float): List<PointF> {
-        val points = mutableListOf<PointF>()
-        var angle = SIDE_FAN_OUTER_DEG
-        while (angle >= SIDE_FAN_INNER_DEG - 0.001f) {
-            fanPoint(frame, sign * angle, radialMm)?.let(points::add)
-            angle -= SIDE_FAN_STEP_DEG
-        }
-        return points
-    }
-
-    private fun fanPoint(frame: ArFrameData, headingDeg: Float, radialMm: Float): PointF? {
-        val radians = Math.toRadians(headingDeg.toDouble())
-        val lateralMm = (kotlin.math.sin(radians) * radialMm).toFloat()
-        val forwardMm = (kotlin.math.cos(radians) * radialMm).toFloat()
-        return AssistGeometry.guidePointToView(frame, lateralMm, forwardMm, contentOnly = false)
     }
 
     private fun MutableZoneEvidence.toEvidence(): SemanticZoneEvidence {

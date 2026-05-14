@@ -3,13 +3,21 @@ package com.ssafy.smartcane.lumen2.assist
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RectF
 
 class AssistOverlayRenderer {
+    private companion object {
+        private const val TACTILE_TEXTURE_SIZE = 256
+    }
+
     private var reusableBitmap: Bitmap? = null
+    private var reusableLinearTactileTexture: Bitmap? = null
+    private var reusableDotTactileTexture: Bitmap? = null
+    private val textureMatrix = Matrix()
     private val semanticObstaclePath = Path()
     private val panelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -72,6 +80,18 @@ class AssistOverlayRenderer {
         style = Paint.Style.STROKE
         strokeWidth = 3f
     }
+    private val tactileTileFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val tactileTileStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(170, 255, 255, 255)
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val tactileTexturePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        alpha = 205
+    }
     private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textSize = 56f
@@ -131,6 +151,7 @@ class AssistOverlayRenderer {
 
         drawDepthSectionLines(canvas, visualization)
         drawObstacleMarks(canvas, visualization)
+        drawTactileTiles(canvas, visualization)
         visualization.distanceCurves.forEach { curve ->
             drawPolyline(canvas, curve.points, arcPaint)
             drawCurveLabel(canvas, curve)
@@ -239,14 +260,11 @@ class AssistOverlayRenderer {
 
     private fun primaryGuidance(decision: AssistDecision): String {
         return when (decision.command) {
-            AssistCommand.KEEP -> "정면 관찰"
+            AssistCommand.KEEP -> "전방 관찰"
             AssistCommand.STOP -> "정지"
-            AssistCommand.FRONT_CAUTION -> "정면 주의"
-            AssistCommand.FRONT_LIMIT -> "정면 제한"
+            AssistCommand.FRONT_CAUTION -> "전방 주의"
+            AssistCommand.FRONT_LIMIT -> "전방 제한"
             AssistCommand.DEPTH_CAUTION -> "거리 이상 감지"
-            AssistCommand.LEFT_SPACE -> "정면 제한 - 왼쪽 여유"
-            AssistCommand.RIGHT_SPACE -> "정면 제한 - 오른쪽 여유"
-            AssistCommand.BOTH_SIDE_SPACE -> "정면 제한 - 양쪽 여유"
             AssistCommand.CAMERA_ADJUST -> "카메라 각도 조절"
             AssistCommand.SYSTEM_UNSTABLE -> "인식 불안정"
         }
@@ -254,39 +272,20 @@ class AssistOverlayRenderer {
 
     private fun evidenceLine(decision: AssistDecision): String {
         return when (decision.command) {
-            AssistCommand.STOP -> "${AssistConfig.IMMEDIATE_LABEL} 이내 정면 non-walkable"
-            AssistCommand.FRONT_LIMIT,
-            AssistCommand.LEFT_SPACE,
-            AssistCommand.RIGHT_SPACE,
-            AssistCommand.BOTH_SIDE_SPACE -> "${AssistConfig.IMMEDIATE_LABEL}~${AssistConfig.NEAR_LABEL} 정면 non-walkable"
-            AssistCommand.FRONT_CAUTION -> "${AssistConfig.NEAR_LABEL}~${AssistConfig.PLAN_LABEL} 정면 non-walkable"
+            AssistCommand.STOP -> "${AssistConfig.PLAN_LABEL} 이내 전방 non-walkable"
+            AssistCommand.FRONT_LIMIT -> "${AssistConfig.PLAN_LABEL} 이내 전방 non-walkable"
+            AssistCommand.FRONT_CAUTION -> "${AssistConfig.PLAN_LABEL} 이내 전방 주의"
             AssistCommand.DEPTH_CAUTION -> "화면 3분할 depth anomaly ${depthLabel(decision.awareness.depthAnomaly)}"
             AssistCommand.CAMERA_ADJUST -> cameraAdjustEvidence(decision.awareness.frontReason)
             AssistCommand.SYSTEM_UNSTABLE -> decision.confidence.unstableReason ?: "센서 신뢰 낮음"
-            AssistCommand.KEEP -> "${AssistConfig.PLAN_LABEL}까지 정면 관찰 중"
-        }
-    }
-
-    private fun sideEvidenceLine(decision: AssistDecision): String? {
-        return when (decision.command) {
-            AssistCommand.LEFT_SPACE -> "좌측 ${AssistConfig.NEAR_LABEL} 여유 / 우측 ${sideShort(decision.awareness.rightSpace)}"
-            AssistCommand.RIGHT_SPACE -> "우측 ${AssistConfig.NEAR_LABEL} 여유 / 좌측 ${sideShort(decision.awareness.leftSpace)}"
-            AssistCommand.BOTH_SIDE_SPACE -> "좌우 ${AssistConfig.NEAR_LABEL} 여유"
-            AssistCommand.FRONT_LIMIT -> "좌측 ${sideShort(decision.awareness.leftSpace)} / 우측 ${sideShort(decision.awareness.rightSpace)}"
-            else -> null
+            AssistCommand.KEEP -> "${AssistConfig.PLAN_LABEL}까지 전방 관찰 중"
         }
     }
 
     private fun cameraAdjustEvidence(reason: String): String {
         return when (reason) {
-            "guide range ${AssistConfig.IMMEDIATE_LABEL}, ${AssistConfig.NEAR_LABEL} and ${AssistConfig.PLAN_LABEL} not visible" -> "${AssistConfig.IMMEDIATE_LABEL}선, ${AssistConfig.NEAR_LABEL}선, ${AssistConfig.PLAN_LABEL}선이 화면 밖입니다"
-            "guide range ${AssistConfig.IMMEDIATE_LABEL} and ${AssistConfig.NEAR_LABEL} not visible" -> "${AssistConfig.IMMEDIATE_LABEL}선과 ${AssistConfig.NEAR_LABEL}선이 화면 밖입니다"
-            "guide range ${AssistConfig.IMMEDIATE_LABEL} and ${AssistConfig.PLAN_LABEL} not visible" -> "${AssistConfig.IMMEDIATE_LABEL}선과 ${AssistConfig.PLAN_LABEL}선이 화면 밖입니다"
-            "guide range ${AssistConfig.NEAR_LABEL} and ${AssistConfig.PLAN_LABEL} not visible" -> "${AssistConfig.NEAR_LABEL}선과 ${AssistConfig.PLAN_LABEL}선이 화면 밖입니다"
-            "guide range ${AssistConfig.IMMEDIATE_LABEL} not visible" -> "${AssistConfig.IMMEDIATE_LABEL}선이 화면 밖입니다"
-            "guide range ${AssistConfig.NEAR_LABEL} not visible" -> "${AssistConfig.NEAR_LABEL}선이 화면 밖입니다"
             "guide range ${AssistConfig.PLAN_LABEL} not visible" -> "${AssistConfig.PLAN_LABEL}선이 화면 밖입니다"
-            "near corridor not visible" -> "${AssistConfig.IMMEDIATE_LABEL}~${AssistConfig.NEAR_LABEL} 정면 영역이 화면 밖입니다"
+            "2m corridor not visible" -> "${AssistConfig.PLAN_LABEL} 전방 영역이 화면 밖입니다"
             else -> "기준선이 화면 밖입니다"
         }
     }
@@ -304,14 +303,6 @@ class AssistOverlayRenderer {
             DepthAnomalyStatus.MULTIPLE -> "multi"
             DepthAnomalyStatus.CLEAR,
             DepthAnomalyStatus.UNKNOWN -> "-"
-        }
-    }
-
-    private fun sideShort(status: SideSpaceStatus): String {
-        return when (status) {
-            SideSpaceStatus.AVAILABLE -> "여유"
-            SideSpaceStatus.BLOCKED -> "제한"
-            SideSpaceStatus.UNKNOWN -> "불확실"
         }
     }
 
@@ -357,6 +348,141 @@ class AssistOverlayRenderer {
         if (hasRoad) canvas.drawPath(roadPath, roadFillPaint)
         if (hasCurb) canvas.drawPath(curbPath, curbBoundaryFillPaint)
         if (hasNonWalkable) canvas.drawPath(semanticObstaclePath, obstacleFillPaint)
+    }
+
+    private fun drawTactileTiles(canvas: Canvas, visualization: AssistVisualization) {
+        visualization.tactileTiles.forEach { tile ->
+            if (tile.displayPolygon.size != 4) return@forEach
+            tactileTileFillPaint.color = when (tile.kind) {
+                AssistTactileTileKind.WALKABLE -> Color.argb(28, 28, 170, 88)
+                AssistTactileTileKind.NON_WALKABLE -> Color.argb(32, 255, 170, 35)
+                AssistTactileTileKind.UNKNOWN -> Color.argb(28, 210, 210, 210)
+            }
+            drawPolygon(canvas, tile.displayPolygon, tactileTileFillPaint)
+            when (tile.kind) {
+                AssistTactileTileKind.WALKABLE -> drawTactileTextureTile(
+                    canvas = canvas,
+                    polygon = tile.displayPolygon,
+                    texture = linearTactileTexture()
+                )
+                AssistTactileTileKind.NON_WALKABLE -> drawTactileTextureTile(
+                    canvas = canvas,
+                    polygon = tile.displayPolygon,
+                    texture = dotTactileTexture()
+                )
+                AssistTactileTileKind.UNKNOWN -> Unit
+            }
+            drawPolygon(canvas, tile.displayPolygon, tactileTileStrokePaint)
+        }
+    }
+
+    private fun drawTactileTextureTile(canvas: Canvas, polygon: List<PointF>, texture: Bitmap) {
+        val src = floatArrayOf(
+            0f, 0f,
+            texture.width.toFloat(), 0f,
+            texture.width.toFloat(), texture.height.toFloat(),
+            0f, texture.height.toFloat()
+        )
+        val dst = floatArrayOf(
+            polygon[0].x, polygon[0].y,
+            polygon[1].x, polygon[1].y,
+            polygon[2].x, polygon[2].y,
+            polygon[3].x, polygon[3].y
+        )
+        textureMatrix.reset()
+        textureMatrix.setPolyToPoly(src, 0, dst, 0, 4)
+        canvas.drawBitmap(texture, textureMatrix, tactileTexturePaint)
+    }
+
+    private fun linearTactileTexture(): Bitmap {
+        reusableLinearTactileTexture?.let { return it }
+        return createLinearTactileTexture().also { reusableLinearTactileTexture = it }
+    }
+
+    private fun dotTactileTexture(): Bitmap {
+        reusableDotTactileTexture?.let { return it }
+        return createDotTactileTexture().also { reusableDotTactileTexture = it }
+    }
+
+    private fun createLinearTactileTexture(): Bitmap {
+        val bitmap = Bitmap.createBitmap(
+            TACTILE_TEXTURE_SIZE,
+            TACTILE_TEXTURE_SIZE,
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        val size = TACTILE_TEXTURE_SIZE.toFloat()
+        val base = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(116, 245, 209, 44)
+            style = Paint.Style.FILL
+        }
+        val bevel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(96, 255, 252, 170)
+            style = Paint.Style.STROKE
+            strokeWidth = size * 0.018f
+        }
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(88, 70, 52, 0)
+            style = Paint.Style.FILL
+        }
+        val highlight = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(160, 255, 248, 150)
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(10f, 10f, size - 10f, size - 10f, 20f, 20f, base)
+        canvas.drawRoundRect(13f, 13f, size - 13f, size - 13f, 17f, 17f, bevel)
+
+        val barWidth = size * 0.13f
+        val barHeight = size * 0.74f
+        val top = (size - barHeight) * 0.5f
+        val bottom = top + barHeight
+        listOf(0.29f, 0.5f, 0.71f).forEach { xRatio ->
+            val left = size * xRatio - barWidth * 0.5f
+            val right = left + barWidth
+            canvas.drawRoundRect(left + 5f, top + 7f, right + 5f, bottom + 7f, barWidth, barWidth, shadow)
+            canvas.drawRoundRect(left, top, right, bottom, barWidth, barWidth, highlight)
+        }
+        return bitmap
+    }
+
+    private fun createDotTactileTexture(): Bitmap {
+        val bitmap = Bitmap.createBitmap(
+            TACTILE_TEXTURE_SIZE,
+            TACTILE_TEXTURE_SIZE,
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        val size = TACTILE_TEXTURE_SIZE.toFloat()
+        val base = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(126, 247, 200, 38)
+            style = Paint.Style.FILL
+        }
+        val bevel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(92, 255, 245, 145)
+            style = Paint.Style.STROKE
+            strokeWidth = size * 0.018f
+        }
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(96, 70, 50, 0)
+            style = Paint.Style.FILL
+        }
+        val highlight = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(170, 255, 238, 112)
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(10f, 10f, size - 10f, size - 10f, 20f, 20f, base)
+        canvas.drawRoundRect(13f, 13f, size - 13f, size - 13f, 17f, 17f, bevel)
+
+        val radius = size * 0.085f
+        listOf(0.28f, 0.5f, 0.72f).forEach { xRatio ->
+            listOf(0.28f, 0.5f, 0.72f).forEach { yRatio ->
+                val x = size * xRatio
+                val y = size * yRatio
+                canvas.drawCircle(x + 5f, y + 6f, radius, shadow)
+                canvas.drawCircle(x, y, radius, highlight)
+            }
+        }
+        return bitmap
     }
 
     private fun drawDepthSectionLines(canvas: Canvas, visualization: AssistVisualization) {
@@ -486,9 +612,6 @@ class AssistOverlayRenderer {
         return when (state) {
             AssistState.CRITICAL_STOP -> Color.rgb(255, 80, 80)
             AssistState.SYSTEM_UNSTABLE -> Color.rgb(210, 210, 210)
-            AssistState.SIDE_SPACE_LEFT,
-            AssistState.SIDE_SPACE_RIGHT,
-            AssistState.SIDE_SPACE_BOTH,
             AssistState.CAUTION,
             AssistState.CAMERA_ADJUST -> Color.rgb(255, 220, 80)
             AssistState.RECOVERY,
@@ -500,7 +623,6 @@ class AssistOverlayRenderer {
         return when (state) {
             AssistState.NORMAL -> "관찰"
             AssistState.CAUTION -> "주의"
-            AssistState.SIDE_SPACE_LEFT, AssistState.SIDE_SPACE_RIGHT, AssistState.SIDE_SPACE_BOTH -> "여유"
             AssistState.CRITICAL_STOP -> "정지"
             AssistState.CAMERA_ADJUST -> "각도"
             AssistState.SYSTEM_UNSTABLE -> "불안정"
