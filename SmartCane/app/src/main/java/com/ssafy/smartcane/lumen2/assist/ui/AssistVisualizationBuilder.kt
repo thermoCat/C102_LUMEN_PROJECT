@@ -15,6 +15,8 @@ internal object AssistVisualizationBuilder {
     fun build(
         frame: ArFrameData,
         semanticEvidence: SemanticCorridorEvidence?,
+        leftEvidence: SemanticCorridorEvidence?,
+        rightEvidence: SemanticCorridorEvidence?,
         curbBoundary: CurbBoundaryEvidence,
         trafficEvidence: TrafficSceneEvidence
     ): AssistVisualization? {
@@ -36,6 +38,8 @@ internal object AssistVisualizationBuilder {
         )
         return raw.copy(
             obstaclePolygons = semanticEvidence.orEmptyObstaclePolygons() +
+                leftEvidence.orEmptyObstaclePolygons() +
+                rightEvidence.orEmptyObstaclePolygons() +
                 curbBoundary.polygons
         )
     }

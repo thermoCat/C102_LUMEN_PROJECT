@@ -40,6 +40,11 @@ class AssistEngine {
         val stableTrafficEvidence = trafficStabilizer.stabilize(trafficEvidence, nowMillis)
         
         val awareness = buildAwareness(confidence, frame, frontEvidence, curbBoundary, stableTrafficEvidence)
+        
+        // 시각화를 위해 좌우 분석 데이터도 수집 (정면이 막히지 않았어도 시각화용으로 수집)
+        val leftEvidence = AssistSemanticAnalyzer.analyzeSideFan(frame, left = true)
+        val rightEvidence = AssistSemanticAnalyzer.analyzeSideFan(frame, left = false)
+        
         val rawCommand = commandFromAwareness(awareness, confidence)
         val command = stabilize(rawCommand, nowMillis)
         val state = stateFor(command, confidence)
@@ -51,7 +56,14 @@ class AssistEngine {
             stateEnteredAt = nowMillis
         }
         
-        val visualization = AssistVisualizationBuilder.build(frame, frontEvidence, curbBoundary, stableTrafficEvidence)
+        val visualization = AssistVisualizationBuilder.build(
+            frame = frame,
+            semanticEvidence = frontEvidence,
+            leftEvidence = leftEvidence,
+            rightEvidence = rightEvidence,
+            curbBoundary = curbBoundary,
+            trafficEvidence = stableTrafficEvidence
+        )
 
         // 음성 안내 우선순위: 신호등 > 연석 > 카메라 각도
         val intersectionSpeech = intersectionSpeech(stableTrafficEvidence, nowMillis)
