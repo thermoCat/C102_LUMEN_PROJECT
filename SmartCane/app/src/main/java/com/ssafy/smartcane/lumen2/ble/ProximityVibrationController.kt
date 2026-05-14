@@ -11,17 +11,11 @@ class ProximityVibrationController(
 
     @Volatile private var sequencePlaying = false
     private var lastActiveCmd: String? = null
-    private var lastSentCommand: AssistCommand? = null
     private var lastSentAt = 0L
-    private var stopFired = false
 
     fun update(decision: AssistDecision) {
         val now = System.currentTimeMillis()
         val cmd = decision.command
-
-        if (cmd != AssistCommand.STOP) {
-            stopFired = false
-        }
 
         when {
             !hasVibration(cmd) -> {
@@ -29,39 +23,19 @@ class ProximityVibrationController(
                     cancelSequence()
                     send("O")
                     lastActiveCmd = null
-                    lastSentCommand = null
                 }
             }
 
-            sequencePlaying && cmd != AssistCommand.STOP -> return
+            sequencePlaying -> return
 
             else -> {
-                val commandChanged = cmd != lastSentCommand
-                val cooldownElapsed = now - lastSentAt >= cooldownFor(cmd)
-                val shouldSend = !respectCooldown || commandChanged || cooldownElapsed
-                if (!shouldSend) return
+                val cooldownElapsed = now - lastSentAt >= 2000L
+                if (respectCooldown && !cooldownElapsed) return
 
-                when (cmd) {
-                    AssistCommand.STOP -> {
-                        if (stopFired) return
-                        stopFired = true
-                        cancelSequence()
-                        lastSentCommand = cmd
-                        lastSentAt = now
-                        lastActiveCmd = "B3"
-                        playStop()
-                    }
-
-                    AssistCommand.FRONT_LIMIT -> {
-                        cancelSequence()
-                        lastSentCommand = cmd
-                        lastSentAt = now
-                        lastActiveCmd = "B1"
-                        playFrontLimit()
-                    }
-
-                    else -> Unit
-                }
+                cancelSequence()
+                lastSentAt = now
+                lastActiveCmd = "B3"
+                playTriple()
             }
         }
     }
@@ -70,12 +44,11 @@ class ProximityVibrationController(
         cancelSequence()
         if (lastActiveCmd != null) send("O")
         lastActiveCmd = null
-        lastSentCommand = null
         lastSentAt = 0L
-        stopFired = false
     }
 
-    private fun playStop() {
+    // 둥둥둥: B3 × 3회, 300ms 간격
+    private fun playTriple() {
         sequencePlaying = true
         send("B3")
         handler.postDelayed({
@@ -84,15 +57,6 @@ class ProximityVibrationController(
                 send("B3")
                 handler.postDelayed({ sequencePlaying = false }, 300)
             }, 300)
-        }, 300)
-    }
-
-    private fun playFrontLimit() {
-        sequencePlaying = true
-        send("B1")
-        handler.postDelayed({
-            send("B1")
-            handler.postDelayed({ sequencePlaying = false }, 300)
         }, 300)
     }
 
@@ -105,11 +69,5 @@ class ProximityVibrationController(
         AssistCommand.STOP,
         AssistCommand.FRONT_LIMIT -> true
         else -> false
-    }
-
-    private fun cooldownFor(cmd: AssistCommand): Long = when (cmd) {
-        AssistCommand.STOP -> 0L
-        AssistCommand.FRONT_LIMIT -> 2000L
-        else -> Long.MAX_VALUE
     }
 }
