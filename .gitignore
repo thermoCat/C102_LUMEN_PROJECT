@@ -62,3 +62,6 @@ aws-config.*
 # IDE / editor
 .vscode/
 *.iml
+
+# Claude Code
+.claude/
