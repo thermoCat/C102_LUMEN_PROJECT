@@ -180,20 +180,7 @@ class AssistOverlayRenderer {
         var contentY = badgeBottom + 34f
         titlePaint.color = accentColor
         contentY = drawWrappedText(canvas, primaryGuidance(decision), left + 24f, contentY, panelWidth - 48f, titlePaint, 14f, 2)
-        contentY += 8f
-        canvas.drawLine(left + 24f, contentY, right - 24f, contentY, dividerPaint)
-        contentY += 28f
-        val secondary = supportSummary(decision)
-        drawWrappedText(canvas, secondary, left + 24f, contentY, panelWidth - 48f, bodyPaint, 10f, 3)
         return panelBottom
-    }
-
-    private fun supportSummary(decision: AssistDecision): String {
-        return listOfNotNull(
-            evidenceLine(decision),
-            sideEvidenceLine(decision),
-            sensorLine(decision)
-        ).joinToString("\n")
     }
 
     private fun drawSituationAlerts(canvas: Canvas, width: Int, panelBottom: Float, decision: AssistDecision) {

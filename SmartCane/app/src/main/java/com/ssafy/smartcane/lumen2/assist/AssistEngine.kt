@@ -279,13 +279,12 @@ class AssistEngine {
 
     private fun assessSideNearSemanticFan(frame: ArFrameData, left: Boolean): SideSpaceStatus {
         val evidence = AssistSemanticAnalyzer.analyzeSideFan(frame, left)
-            ?: return SideSpaceStatus.UNKNOWN
+            ?: return SideSpaceStatus.AVAILABLE // 정보 없으면 여유 (안 보이면 여유)
         val immediateVisible = evidence.immediate.visible
         val nearVisible = evidence.near.visible
-        if (!immediateVisible && !nearVisible) return SideSpaceStatus.UNKNOWN
-        return if ((immediateVisible && evidence.immediate.blocked) ||
-            (nearVisible && evidence.near.blocked)
-        ) {
+        // 1.5m 선 이내(Immediate) 등이 보이지 않으면 여유로 판단
+        if (!immediateVisible || !nearVisible) return SideSpaceStatus.AVAILABLE
+        return if (evidence.immediate.blocked || evidence.near.blocked) {
             SideSpaceStatus.BLOCKED
         } else {
             SideSpaceStatus.AVAILABLE
@@ -447,12 +446,12 @@ class AssistEngine {
     private fun commandSpeech(command: AssistCommand): String? {
         return when (command) {
             AssistCommand.STOP -> "정지"
-            AssistCommand.FRONT_LIMIT -> "정면 제한"
+            AssistCommand.FRONT_LIMIT -> "전방 제한 - 양측 제한"
+            AssistCommand.LEFT_SPACE -> "전방 제한 - 왼쪽 여유"
+            AssistCommand.RIGHT_SPACE -> "전방 제한 - 오른쪽 여유"
+            AssistCommand.BOTH_SIDE_SPACE -> "전방 제한 - 양측 여유"
             AssistCommand.FRONT_CAUTION -> "정면 주의"
             AssistCommand.DEPTH_CAUTION -> "거리 이상 감지"
-            AssistCommand.LEFT_SPACE -> null
-            AssistCommand.RIGHT_SPACE -> null
-            AssistCommand.BOTH_SIDE_SPACE -> null
             AssistCommand.CAMERA_ADJUST -> "카메라를 조금 아래로"
             AssistCommand.SYSTEM_UNSTABLE -> "인식 불안정"
             AssistCommand.KEEP -> null
