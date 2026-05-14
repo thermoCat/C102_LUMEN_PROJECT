@@ -279,14 +279,13 @@ class AssistEngine {
 
     private fun assessSideNearSemanticFan(frame: ArFrameData, left: Boolean): SideSpaceStatus {
         val evidence = AssistSemanticAnalyzer.analyzeSideFan(frame, left)
-            ?: return SideSpaceStatus.AVAILABLE // 정보 없으면 여유 (안 보이면 여유)
-        val immediateVisible = evidence.immediate.visible
-        val nearVisible = evidence.near.visible
-        // 1.5m 선 이내(Immediate) 등이 보이지 않으면 여유로 판단
-        if (!immediateVisible || !nearVisible) return SideSpaceStatus.AVAILABLE
+            ?: return SideSpaceStatus.AVAILABLE 
+            
+        // 시각화와 일치시키기 위해: 단 하나의 장애물(빨간색/노란색)이라도 그려지면 BLOCKED로 판단
         return if (evidence.immediate.blocked || evidence.near.blocked) {
             SideSpaceStatus.BLOCKED
         } else {
+            // 막힘이 없거나, 영역이 화면 밖이라 샘플이 0개인 경우 모두 AVAILABLE
             SideSpaceStatus.AVAILABLE
         }
     }
