@@ -5,9 +5,6 @@ import android.graphics.PointF
 enum class AssistState {
     NORMAL,
     CAUTION,
-    SIDE_SPACE_LEFT,
-    SIDE_SPACE_RIGHT,
-    SIDE_SPACE_BOTH,
     CRITICAL_STOP,
     CAMERA_ADJUST,
     SYSTEM_UNSTABLE,
@@ -19,9 +16,6 @@ enum class AssistCommand {
     FRONT_CAUTION,
     FRONT_LIMIT,
     DEPTH_CAUTION,
-    LEFT_SPACE,
-    RIGHT_SPACE,
-    BOTH_SIDE_SPACE,
     STOP,
     CAMERA_ADJUST,
     SYSTEM_UNSTABLE
@@ -35,12 +29,6 @@ enum class FrontStatus {
     UNKNOWN
 }
 
-enum class SideSpaceStatus {
-    AVAILABLE,
-    BLOCKED,
-    UNKNOWN
-}
-
 data class SensorConfidence(
     val semanticCoverage: Float,
     val confidence: Float,
@@ -49,13 +37,10 @@ data class SensorConfidence(
 
 data class AwarenessSnapshot(
     val frontStatus: FrontStatus,
-    val leftSpace: SideSpaceStatus,
-    val rightSpace: SideSpaceStatus,
     val curbBoundary: CurbBoundaryStatus,
     val trafficScene: TrafficSceneStatus,
     val depthAnomaly: DepthAnomalyStatus,
     val frontReason: String,
-    val sideHintReason: String?,
     val depthReason: String?
 )
 
@@ -70,6 +55,12 @@ enum class AssistObstacleKind {
     NON_WALKABLE,
     CURB_BOUNDARY,
     DEPTH_ANOMALY
+}
+
+enum class AssistTactileTileKind {
+    WALKABLE,
+    NON_WALKABLE,
+    UNKNOWN
 }
 
 enum class CurbBoundaryStatus {
@@ -98,6 +89,11 @@ enum class DepthAnomalyStatus {
 data class AssistObstaclePolygon(
     val displayPolygon: List<PointF>,
     val kind: AssistObstacleKind
+)
+
+data class AssistTactileTile(
+    val displayPolygon: List<PointF>,
+    val kind: AssistTactileTileKind
 )
 
 data class CurbBoundaryEvidence(
@@ -181,6 +177,7 @@ data class AssistVisualization(
     val selectedBodyPolygon: List<PointF>,
     val selectedCenterLine: List<PointF>,
     val obstaclePolygons: List<AssistObstaclePolygon>,
+    val tactileTiles: List<AssistTactileTile>,
     val trafficDetections: List<TrafficDetection>
 )
 
