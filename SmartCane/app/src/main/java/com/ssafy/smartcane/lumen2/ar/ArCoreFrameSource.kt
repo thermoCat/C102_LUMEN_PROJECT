@@ -89,14 +89,19 @@ class ArCoreFrameSource(
             viewportWidth, viewportHeight
         )
         GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
-        GLES20.glClearColor(0f, 0f, 0f, 1f)
+        GLES20.glClearColor(1.0f, 0.0f, 0.0f, 1f) // 완전 빨간색으로 변경 (디버깅용)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
         val frame = try {
             activeSession.update()
         } catch (t: Throwable) {
-            onStatus("ARCore update failed: ${t.javaClass.simpleName}")
+            // Log.e("ArCoreFrameSource", "Session update failed", t)
             return
+        }
+
+        // 프레임이 들어오는지 로그 (100프레임마다 한 번씩)
+        if (lastTimestamp % 100 == 0L) {
+            // Log.d("ArCoreFrameSource", "Rendering frame: ${frame.timestamp}")
         }
 
         if (frame.hasDisplayGeometryChanged() || !textureCoordinatesReady) {
@@ -154,10 +159,24 @@ class ArCoreFrameSource(
                 }
                 ArCoreApk.InstallStatus.INSTALLED -> {
                     val newSession = Session(activity)
+
+                    // CPU 이미지 접근을 위한 CameraConfig 선택 (S10 등 기기 호환성)
+                    try {
+                        val filter = com.google.ar.core.CameraConfigFilter(newSession)
+                        val configs = newSession.getSupportedCameraConfigs(filter)
+                        val cpuCapable = configs.filter { it.imageSize.width > 0 && it.imageSize.height > 0 }
+                        val chosen = cpuCapable.minByOrNull { it.imageSize.width.toLong() * it.imageSize.height }
+                        if (chosen != null) {
+                            newSession.cameraConfig = chosen
+                            onStatus("CameraConfig chosen: ${chosen.imageSize.width}x${chosen.imageSize.height}")
+                        }
+                    } catch (e: Exception) {
+                        onStatus("CameraConfig selection failed: ${e.message}")
+                    }
+
                     val config = Config(newSession)
-                    depthSupported = newSession.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
                     semanticsSupported = newSession.isSemanticModeSupported(Config.SemanticMode.ENABLED)
-                    if (depthSupported) config.depthMode = Config.DepthMode.AUTOMATIC
+                    config.depthMode = Config.DepthMode.DISABLED
                     if (semanticsSupported) config.semanticMode = Config.SemanticMode.ENABLED
                     config.focusMode = Config.FocusMode.AUTO
                     config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
@@ -180,7 +199,6 @@ class ArCoreFrameSource(
         val bitmap = cameraImage?.let {
             CameraImageConverter.toBitmap(it, CPU_IMAGE_MAX_SIDE)
         }
-        val depth = readDepth(frame)
         val semantics = readSemantics(frame)
         val semanticFractions = readSemanticFractions(frame)
         val pose = frame.camera.pose
@@ -190,9 +208,9 @@ class ArCoreFrameSource(
             viewWidth = viewportWidth,
             viewHeight = viewportHeight,
             displayUvCoords = backgroundRenderer.currentTexCoords(),
-            depthWidth = depth?.first ?: 0,
-            depthHeight = depth?.second ?: 0,
-            depthMillimeters = depth?.third,
+            depthWidth = 0,
+            depthHeight = 0,
+            depthMillimeters = null,
             semanticWidth = semantics?.first ?: 0,
             semanticHeight = semantics?.second ?: 0,
             semanticLabels = semantics?.third,
@@ -201,7 +219,7 @@ class ArCoreFrameSource(
             poseQuaternion = pose.rotationQuaternion.copyOf(),
             intrinsics = readIntrinsics(frame),
             tracking = frame.camera.trackingState == TrackingState.TRACKING,
-            depthSupported = depthSupported,
+            depthSupported = false,
             semanticsSupported = semanticsSupported
         )
     }
@@ -222,28 +240,6 @@ class ArCoreFrameSource(
                 viewportWidth.toFloat(), viewportWidth.toFloat(),
                 viewportWidth / 2f, viewportHeight / 2f
             )
-        }
-    }
-
-    private fun readDepth(frame: Frame): Triple<Int, Int, ShortArray>? {
-        val image = try { frame.acquireDepthImage16Bits() } catch (_: Throwable) { null } ?: return null
-        return image.useImage {
-            val data = ShortArray(width * height)
-            val plane = planes[0]
-            val buffer = plane.buffer
-            val rowStride = plane.rowStride
-            val pixelStride = plane.pixelStride.coerceAtLeast(2)
-            var offset = 0
-            for (row in 0 until height) {
-                val rowStart = row * rowStride
-                for (col in 0 until width) {
-                    val idx = rowStart + col * pixelStride
-                    val low = buffer.get(idx).toInt() and 0xff
-                    val high = buffer.get(idx + 1).toInt() and 0xff
-                    data[offset++] = ((high shl 8) or low).toShort()
-                }
-            }
-            Triple(width, height, data)
         }
     }
 

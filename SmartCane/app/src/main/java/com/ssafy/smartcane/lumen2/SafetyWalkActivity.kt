@@ -18,7 +18,6 @@ import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.lumen2.assist.AssistEngine
 import com.ssafy.smartcane.lumen2.assist.AssistFeedbackController
 import com.ssafy.smartcane.lumen2.assist.AssistOverlayRenderer
-import com.ssafy.smartcane.lumen2.assist.AssistSignalTimerReader
 import com.ssafy.smartcane.lumen2.assist.AssistTrafficDetector
 import com.ssafy.smartcane.intersection.IntersectionDetector
 import com.ssafy.smartcane.lumen2.assist.IntersectionContext
@@ -39,7 +38,6 @@ class SafetyWalkActivity : ComponentActivity() {
     private lateinit var assistRenderer: AssistOverlayRenderer
     private lateinit var assistFeedback: AssistFeedbackController
     private var assistTrafficDetector: AssistTrafficDetector? = null
-    private lateinit var assistSignalTimerReader: AssistSignalTimerReader
     private lateinit var trafficExecutor: ExecutorService
     private var frameSource: ArCoreFrameSource? = null
 
@@ -65,6 +63,8 @@ class SafetyWalkActivity : ComponentActivity() {
 
         arSurfaceView = findViewById(R.id.arSurfaceView)
         overlayView   = findViewById(R.id.overlayView)
+        overlayView.visibility = android.view.View.VISIBLE
+        overlayView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
 
         assistEngine   = AssistEngine()
         assistRenderer = AssistOverlayRenderer()
@@ -73,22 +73,43 @@ class SafetyWalkActivity : ComponentActivity() {
         assistTrafficDetector = runCatching { AssistTrafficDetector(this) }
             .onFailure { Log.w(TAG, "AssistTrafficDetector 비활성 (${TFLiteRunner.DEFAULT_MODEL_FILE_NAME} 없음)", it) }
             .getOrNull()
-        assistSignalTimerReader = AssistSignalTimerReader()
         trafficExecutor = Executors.newSingleThreadExecutor()
 
         bleNusManager       = (application as SmartCaneApplication).bleNusManager
         proximityController = ProximityVibrationController(send = { cmd -> bleNusManager.sendCommand(cmd) })
 
+        findViewById<android.view.View>(R.id.btnBack).setOnClickListener {
+            finish()
+        }
+
+        findViewById<android.view.View>(R.id.btnStop).setOnClickListener {
+            SafetyWalkService.stop(this)
+            finish()
+        }
+
         // ARCore 세션 충돌 방지: 서비스 실행 중이면 종료 (토글 상태는 유지됨)
         SafetyWalkService.stopForActivity(this)
 
-        if (hasCameraPermission()) startArCore()
-        else permissionLauncher.launch(Manifest.permission.CAMERA)
+        // 1. Renderer 먼저 등록 (NPE 방지: 지연 없이 즉시 실행해야 함)
+        frameSource = ArCoreFrameSource(
+            activity    = this,
+            surfaceView = arSurfaceView,
+            onFrame     = ::handleFrame,
+            onStatus    = { Log.d(TAG, "AR Status: $it") }
+        ).also { it.setup() }
+
+        // 2. 실제 ARCore 세션 시작만 지연 처리 (서비스와의 충돌 방지)
+        arSurfaceView.postDelayed({
+            if (!isFinishing) {
+                if (hasCameraPermission()) startArCore()
+                else permissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }, 1500)
     }
 
     override fun onResume() {
         super.onResume()
-        frameSource?.resume()
+        // onCreate에서 지연 시작하므로 여기서 즉시 resume하지 않음 (지연 로직에 맡김)
     }
 
     override fun onPause() {
@@ -102,7 +123,6 @@ class SafetyWalkActivity : ComponentActivity() {
         frameSource?.close()
         trafficExecutor.shutdownNow()
         assistTrafficDetector?.close()
-        assistSignalTimerReader.close()
         assistFeedback.shutdown()
         // 카메라 해제 후 — 안전보행 토글이 켜져있으면 서비스 재시작
         SafetyWalkService.restartIfEnabled(this)
@@ -110,13 +130,12 @@ class SafetyWalkActivity : ComponentActivity() {
     }
 
     private fun startArCore() {
-        if (frameSource != null) { frameSource?.resume(); return }
-        frameSource = ArCoreFrameSource(
-            activity    = this,
-            surfaceView = arSurfaceView,
-            onFrame     = ::handleFrame,
-            onStatus    = { Log.d(TAG, it) }
-        ).also { it.setup(); it.resume() }
+        try {
+            frameSource?.resume()
+        } catch (e: Exception) {
+            Log.e(TAG, "ARCore 시작 실패", e)
+            finish()
+        }
     }
 
     private fun handleFrame(frame: ArFrameData) {
@@ -141,9 +160,8 @@ class SafetyWalkActivity : ComponentActivity() {
         trafficBusy = true
         trafficExecutor.execute {
             try {
-                val detected   = detector.analyze(bitmap)
-                val withTimers = assistSignalTimerReader.attachTimers(bitmap, detected)
-                val scaled     = withTimers.scaled(bitmap, width, height)
+                val detected = detector.analyze(bitmap)
+                val scaled = detected.scaled(bitmap, width, height)
 
                 // 횡단보도 감지 시 교차로 컨텍스트 주입
                 val intersectionCtx = if (
@@ -176,9 +194,7 @@ class SafetyWalkActivity : ComponentActivity() {
         return copy(detections = detections.map { d ->
             d.copy(
                 left = d.left * sx, top = d.top * sy,
-                right = d.right * sx, bottom = d.bottom * sy,
-                ocrLeft = d.ocrLeft?.times(sx), ocrTop = d.ocrTop?.times(sy),
-                ocrRight = d.ocrRight?.times(sx), ocrBottom = d.ocrBottom?.times(sy)
+                right = d.right * sx, bottom = d.bottom * sy
             )
         })
     }

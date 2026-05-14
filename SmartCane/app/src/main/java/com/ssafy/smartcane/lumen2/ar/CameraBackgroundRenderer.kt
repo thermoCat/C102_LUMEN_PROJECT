@@ -118,7 +118,7 @@ class CameraBackgroundRenderer {
     }
 
     private companion object {
-        const val VERTEX_SHADER = """
+        val VERTEX_SHADER = """
             attribute vec4 a_Position;
             attribute vec2 a_TexCoord;
             varying vec2 v_TexCoord;
@@ -126,8 +126,9 @@ class CameraBackgroundRenderer {
                 gl_Position = a_Position;
                 v_TexCoord = a_TexCoord;
             }
-        """
-        const val FRAGMENT_SHADER = """
+        """.trimIndent()
+
+        val FRAGMENT_SHADER = """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
             uniform samplerExternalOES sTexture;
@@ -135,6 +136,6 @@ class CameraBackgroundRenderer {
             void main() {
                 gl_FragColor = texture2D(sTexture, v_TexCoord);
             }
-        """
+        """.trimIndent()
     }
 }

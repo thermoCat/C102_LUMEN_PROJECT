@@ -48,6 +48,8 @@ import com.ssafy.smartcane.ui.component.BottomNav
 import com.ssafy.smartcane.ui.theme.AppWhite
 import com.ssafy.smartcane.ui.theme.NavBarBg
 import com.ssafy.smartcane.ui.theme.NavGray
+import android.content.Intent
+import com.ssafy.smartcane.lumen2.SafetyWalkActivity
 
 private val SafetyAccent = Color(0xFF005387)
 private val SafetyBackground = Color(0xFF001B2B)
@@ -58,8 +60,13 @@ fun SafetyScreen(
     onEnabledChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    var enabled by remember { mutableStateOf(false) }
+    var enabled by remember { mutableStateOf(SafetyWalkService.userEnabled) }
     val background = if (enabled) SafetyBackground else NavBarBg
+
+    // 화면이 다시 보일 때 서비스 상태와 동기화
+    LaunchedEffect(Unit) {
+        enabled = SafetyWalkService.userEnabled
+    }
 
     // 카메라 권한 요청 → 허용 시 서비스 시작, 거부 시 토글 해제
     val cameraPermLauncher = rememberLauncherForActivityResult(
@@ -104,6 +111,10 @@ fun SafetyScreen(
                 onToggle = {
                     if (!enabled) { enabled = true; startService() }
                     else { enabled = false }
+                },
+                onVisualizeClick = {
+                    val intent = Intent(context, SafetyWalkActivity::class.java)
+                    context.startActivity(intent)
                 }
             )
         }
@@ -124,34 +135,74 @@ fun SafetyScreen(
 private fun SafetyCenteredContent(
     enabled: Boolean,
     onButtonClick: () -> Unit,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onVisualizeClick: () -> Unit
 ) {
-    val gap = 40.dp
+    val gap = 32.dp
     Layout(
         modifier = Modifier.fillMaxSize(),
         content = {
             SafetyStatusText(enabled = enabled)
             SafetyActionButton(enabled = enabled, onClick = onButtonClick)
+            VisualizationOption(enabled = enabled, onClick = onVisualizeClick)
             SafetySwitch(enabled = enabled, onToggle = onToggle)
         }
     ) { measurables, constraints ->
         val textPlaceable = measurables[0].measure(constraints.copy(minWidth = 0, minHeight = 0))
         val buttonPlaceable = measurables[1].measure(constraints.copy(minWidth = 0, minHeight = 0))
-        val switchPlaceable = measurables[2].measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val vizPlaceable = measurables[2].measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val switchPlaceable = measurables[3].measure(constraints.copy(minWidth = 0, minHeight = 0))
         val gapPx = gap.roundToPx()
 
         layout(constraints.maxWidth, constraints.maxHeight) {
             val buttonX = (constraints.maxWidth - buttonPlaceable.width) / 2
             val buttonY = (constraints.maxHeight - buttonPlaceable.height) / 2
+            
             val textX = (constraints.maxWidth - textPlaceable.width) / 2
             val textY = buttonY - gapPx - textPlaceable.height
+            
+            val vizX = (constraints.maxWidth - vizPlaceable.width) / 2
+            val vizY = buttonY + buttonPlaceable.height + (gapPx / 2)
+
             val switchX = (constraints.maxWidth - switchPlaceable.width) / 2
-            val switchY = buttonY + buttonPlaceable.height + gapPx
+            val switchY = vizY + vizPlaceable.height + (gapPx / 2)
 
             textPlaceable.placeRelative(textX, textY.coerceAtLeast(0))
             buttonPlaceable.placeRelative(buttonX, buttonY)
+            vizPlaceable.placeRelative(vizX, vizY)
             switchPlaceable.placeRelative(switchX, switchY)
         }
+    }
+}
+
+@Composable
+private fun VisualizationOption(enabled: Boolean, onClick: () -> Unit) {
+    val alpha by animateFloatAsState(
+        targetValue = if (enabled) 1f else 0f,
+        animationSpec = tween(durationMillis = 300),
+        label = "vizOptionAlpha"
+    )
+
+    if (alpha > 0f) {
+        Box(
+            modifier = Modifier
+                .padding(vertical = 8.dp)
+                .background(SafetyAccent.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "화면으로 보기 >",
+                color = AppWhite.copy(alpha = alpha),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        }
+    } else {
+        // 공간 차지를 방지하기 위해 빈 Box
+        Box(modifier = Modifier.size(0.dp))
     }
 }
 
