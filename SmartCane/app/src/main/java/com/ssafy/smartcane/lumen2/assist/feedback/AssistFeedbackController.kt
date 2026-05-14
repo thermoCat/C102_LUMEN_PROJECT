@@ -42,14 +42,13 @@ class AssistFeedbackController(context: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun vibrate(state: AssistState) {
-        val pattern = when (state) {
-            AssistState.CRITICAL_STOP -> longArrayOf(0, 650)
-            AssistState.SYSTEM_UNSTABLE -> longArrayOf(0, 120, 160, 120)
-            AssistState.CAUTION -> longArrayOf(0, 90, 100, 90)
-            AssistState.CAMERA_ADJUST -> longArrayOf(0, 110, 140, 110)
-            AssistState.RECOVERY -> longArrayOf(0, 70)
-            AssistState.NORMAL -> return
+        when (state) {
+            AssistState.CRITICAL_STOP,
+            AssistState.CAUTION -> Unit
+            else -> return
         }
+        // 둥둥둥: 200ms 진동 × 3회, 간격 150ms
+        val pattern = longArrayOf(0, 200, 150, 200, 150, 200)
         val effect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             VibrationEffect.createWaveform(pattern, -1)
         } else {
