@@ -26,8 +26,8 @@
             android:id="@+id/btnBack"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="뒤로"
             android:backgroundTint="#AA000000"
+            android:text="@string/action_back"
             android:textColor="#FFFFFF" />
 
         <View
@@ -39,8 +39,8 @@
             android:id="@+id/btnStop"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="정지"
             android:backgroundTint="#AACC0000"
+            android:text="@string/action_stop"
             android:textColor="#FFFFFF" />
 
     </LinearLayout>
