@@ -36,6 +36,11 @@ class AssistFeedbackController(context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
+    fun speak(text: String) {
+        if (!ttsReady) return
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "pipeline-${System.currentTimeMillis()}")
+    }
+
     fun shutdown() {
         tts.stop()
         tts.shutdown()

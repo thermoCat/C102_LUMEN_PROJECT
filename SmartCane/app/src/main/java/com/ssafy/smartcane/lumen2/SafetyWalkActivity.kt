@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.SmartCaneApplication
 import com.ssafy.smartcane.ble.BleNusManager
+import com.ssafy.smartcane.crosswalk.CrosswalkPipeline
 import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.lumen2.assist.AssistEngine
 import com.ssafy.smartcane.lumen2.assist.AssistFeedbackController
@@ -23,6 +24,7 @@ import com.ssafy.smartcane.intersection.IntersectionDetector
 import com.ssafy.smartcane.lumen2.assist.IntersectionContext
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneEvidence
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneStatus
+import com.ssafy.smartcane.navigation.HeadingProvider
 import com.ssafy.smartcane.util.LocationHelper
 import com.ssafy.smartcane.lumen2.ar.ArCoreFrameSource
 import com.ssafy.smartcane.lumen2.ar.ArFrameData
@@ -46,6 +48,8 @@ class SafetyWalkActivity : ComponentActivity() {
 
     private lateinit var bleNusManager: BleNusManager
     private lateinit var proximityController: ProximityVibrationController
+    private lateinit var headingProvider: HeadingProvider
+    private lateinit var crosswalkPipeline: CrosswalkPipeline
 
     private companion object {
         private const val TAG = "SafetyWalkActivity"
@@ -78,6 +82,15 @@ class SafetyWalkActivity : ComponentActivity() {
         bleNusManager       = (application as SmartCaneApplication).bleNusManager
         proximityController = ProximityVibrationController(send = { cmd -> bleNusManager.sendCommand(cmd) })
 
+        crosswalkPipeline = CrosswalkPipeline(
+            context = this,
+            bleNusManager = bleNusManager,
+            speak = { text -> assistFeedback.speak(text) }
+        )
+        headingProvider = HeadingProvider(this) { heading ->
+            crosswalkPipeline.currentHeading = heading
+        }
+
         findViewById<android.view.View>(R.id.btnBack).setOnClickListener {
             finish()
         }
@@ -109,16 +122,19 @@ class SafetyWalkActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // onCreate에서 지연 시작하므로 여기서 즉시 resume하지 않음 (지연 로직에 맡김)
+        headingProvider.start()
+        // ARCore 세션은 onCreate에서 지연 시작하므로 여기서 즉시 resume하지 않음
     }
 
     override fun onPause() {
+        headingProvider.stop()
         proximityController.reset()
         frameSource?.pause()
         super.onPause()
     }
 
     override fun onDestroy() {
+        crosswalkPipeline.destroy()
         proximityController.reset()
         frameSource?.close()
         trafficExecutor.shutdownNow()
@@ -163,12 +179,21 @@ class SafetyWalkActivity : ComponentActivity() {
                 val detected = detector.analyze(bitmap)
                 val scaled = detected.scaled(bitmap, width, height)
 
-                // 횡단보도 감지 시 교차로 컨텍스트 주입
+                // 횡단보도/신호 감지 처리
                 val intersectionCtx = if (
                     scaled.status == TrafficSceneStatus.CROSSWALK ||
                     scaled.status == TrafficSceneStatus.GREEN_LIGHT ||
                     scaled.status == TrafficSceneStatus.RED_LIGHT
                 ) {
+                    when (scaled.status) {
+                        // 1단계: 횡단보도만 잡힘 → 위치 파악 + 방면 안내
+                        TrafficSceneStatus.CROSSWALK -> crosswalkPipeline.onCrosswalkDetected()
+                        // 2단계: 사용자가 방향 전환 후 신호등 바라볼 때 신호 상태 안내
+                        TrafficSceneStatus.GREEN_LIGHT -> crosswalkPipeline.onSignalDetected(green = true)
+                        TrafficSceneStatus.RED_LIGHT   -> crosswalkPipeline.onSignalDetected(green = false)
+                        else -> Unit
+                    }
+
                     val loc = LocationHelper.getLastKnownLocation(this@SafetyWalkActivity)
                     if (loc != null) {
                         when (IntersectionDetector.nearbyNodeCount(loc.first, loc.second)) {
