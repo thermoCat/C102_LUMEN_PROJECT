@@ -57,3 +57,48 @@ CREATE INDEX IF NOT EXISTS idx_traffic_lights_location  ON traffic_lights USING 
 CREATE INDEX IF NOT EXISTS idx_traffic_lights_province  ON traffic_lights (province_name);
 CREATE INDEX IF NOT EXISTS idx_traffic_lights_city      ON traffic_lights (city_district_name);
 CREATE INDEX IF NOT EXISTS idx_traffic_lights_mgmt_no   ON traffic_lights (management_number);
+
+-- 교차로 맵 정보 (crsrd_map_info API 응답)
+CREATE TABLE IF NOT EXISTS intersection_maps (
+    id               BIGSERIAL    PRIMARY KEY,
+    stdg_cd          VARCHAR(20),                    -- 지자체코드
+    lclgv_nm         VARCHAR(100),                   -- 지방자치단체명
+    crsrd_id         VARCHAR(20),                    -- 교차로아이디
+    crsrd_nm         VARCHAR(100),                   -- 교차로명
+    map_ctpt_int_lat DECIMAL(14, 10),                -- Map중심점위도
+    map_ctpt_int_lot DECIMAL(14, 10),                -- Map중심점경도
+    location         GEOGRAPHY(POINT, 4326),         -- PostGIS 공간 컬럼 (위경도 파생)
+    lane_wdth        INTEGER,                        -- 차로폭
+    lmt_spd_type_nm  VARCHAR(100),                   -- 제한속도유형명
+    lmt_spd          INTEGER,                        -- 제한속도
+    crsrd_eng_nm     VARCHAR(100),                   -- 교차로영문명
+    reg_id           VARCHAR(50),                    -- 등록자아이디
+    reg_dt           TIMESTAMP,                      -- 등록일시
+    tot_dt           TIMESTAMP                       -- 집계일시
+);
+
+CREATE INDEX IF NOT EXISTS idx_intersection_maps_location  ON intersection_maps USING GIST (location);
+CREATE INDEX IF NOT EXISTS idx_intersection_maps_crsrd_id  ON intersection_maps (crsrd_id);
+CREATE INDEX IF NOT EXISTS idx_intersection_maps_stdg_cd   ON intersection_maps (stdg_cd);
+
+-- 신호제어기 보행자 신호잔여시간 정보 (tl_drct_info API 응답 - 보행신호만)
+CREATE TABLE IF NOT EXISTS pedestrian_signals (
+    id               BIGSERIAL    PRIMARY KEY,
+    tot_dt           TIMESTAMP,                      -- 집계일시
+    stdg_cd          VARCHAR(20),                    -- 지자체코드
+    lclgv_nm         VARCHAR(100),                   -- 지방자치단체명
+    crsrd_id         VARCHAR(20),                    -- 교차로아이디
+    reg_id           VARCHAR(50),                    -- 등록자아이디
+    reg_dt           DATE,                           -- 등록일자
+    nt_pdsg_rmnd_cs  INTEGER,                        -- 북쪽_보행신호_잔여_센티초
+    nt_pdsg_stts_nm  VARCHAR(100),                   -- 북쪽_보행신호_상태명
+    et_pdsg_rmnd_cs  INTEGER,                        -- 동쪽_보행신호_잔여_센티초
+    et_pdsg_stts_nm  VARCHAR(100),                   -- 동쪽_보행신호_상태명
+    st_pdsg_rmnd_cs  INTEGER,                        -- 남쪽_보행신호_잔여_센티초
+    st_pdsg_stts_nm  VARCHAR(100),                   -- 남쪽_보행신호_상태명
+    wt_pdsg_rmnd_cs  INTEGER,                        -- 서쪽_보행신호_잔여_센티초
+    wt_pdsg_stts_nm  VARCHAR(100)                    -- 서쪽_보행신호_상태명
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedestrian_signals_crsrd_id ON pedestrian_signals (crsrd_id);
+CREATE INDEX IF NOT EXISTS idx_pedestrian_signals_tot_dt   ON pedestrian_signals (tot_dt DESC);
