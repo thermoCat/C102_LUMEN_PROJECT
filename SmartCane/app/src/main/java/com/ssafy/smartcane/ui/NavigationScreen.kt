@@ -31,7 +31,7 @@ import com.ssafy.smartcane.viewmodel.NavigationViewModel
 
 @Composable
 fun NavigationScreen(viewModel: NavigationViewModel) {
-    var tab by remember { mutableStateOf(NavTab.Search) }
+    var tab by remember { mutableStateOf(NavTab.Safety) }
     var favorites by remember { mutableStateOf(emptyList<FavItem>()) }
     var safetyEnabled by remember { mutableStateOf(false) }
     var destination by remember { mutableStateOf<RouteDestination?>(null) }
