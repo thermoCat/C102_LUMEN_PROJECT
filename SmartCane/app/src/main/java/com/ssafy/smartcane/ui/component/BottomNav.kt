@@ -40,9 +40,9 @@ fun BottomNav(
     backgroundColor: Color = NavBarBg
 ) {
     val items = listOf(
+        NavItem(NavTab.Safety, "안전 보행", R.drawable.ic_nav_safety),
         NavItem(NavTab.Search, "위치 검색", R.drawable.ic_nav_search),
         NavItem(NavTab.Route, "경로 안내", R.drawable.ic_nav_route),
-        NavItem(NavTab.Safety, "안전 보행", R.drawable.ic_nav_safety),
         NavItem(NavTab.Fav, "즐겨찾기", R.drawable.ic_nav_fav)
     )
 
