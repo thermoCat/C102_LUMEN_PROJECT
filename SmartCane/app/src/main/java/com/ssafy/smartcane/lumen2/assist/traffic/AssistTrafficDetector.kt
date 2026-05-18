@@ -34,6 +34,8 @@ class AssistTrafficDetector(context: Context) : Closeable {
         inputBuffer.rewind()
         val pixels = IntArray(inputWidth * inputHeight)
         resized.getPixels(pixels, 0, inputWidth, 0, 0, inputWidth, inputHeight)
+        // 시연 안정성: scaled 비트맵 즉시 recycle (프레임 루프 OOM 방지)
+        if (resized !== bitmap && !resized.isRecycled) resized.recycle()
         pixels.forEach { pixel ->
             inputBuffer.putFloat(((pixel shr 16) and 0xff) / 255f)
             inputBuffer.putFloat(((pixel shr 8) and 0xff) / 255f)

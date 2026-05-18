@@ -70,6 +70,8 @@ class TFLiteRunner(
     fun detectAll(bitmap: Bitmap, minConfidence: Float = MIN_CONFIDENCE_THRESHOLD): List<Result> {
         val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true)
         val inputBuffer = bitmapToByteBuffer(resized)
+        // 시연 안정성: scale로 새 비트맵이 생성된 경우 즉시 recycle (저사양 기기 OOM 방지)
+        if (resized !== bitmap && !resized.isRecycled) resized.recycle()
 
         val outputSize = outputShape.fold(1) { acc, dim -> acc * dim }
         val outputBuffer = ByteBuffer.allocateDirect(outputSize * 4).apply {

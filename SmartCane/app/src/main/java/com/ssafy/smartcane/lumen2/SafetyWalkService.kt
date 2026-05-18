@@ -280,9 +280,13 @@ class SafetyWalkService : Service() {
 
         tts?.stop(); tts?.shutdown(); tts = null
 
-        // TFLiteRunner.close() 는 추론 완료 후 executor 스레드에서 호출 (크래시 방지)
+        // TFLiteRunner.close() 는 추론 완료 후 executor 스레드에서 호출 (native 크래시 방지)
         tfliteExecutor.execute { runCatching { tfliteRunner?.close() } }
         tfliteExecutor.shutdown()
+        runCatching {
+            // 진행 중인 추론이 끝나기를 최대 2초 대기 (안 끝나면 어차피 프로세스 종료됨)
+            tfliteExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        }
 
         // ARCore + EGL 정리는 bgThread 에서
         handler?.post {
@@ -300,6 +304,18 @@ class SafetyWalkService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun startGpsUpdates() {
+        // 시연 안정성: 런타임 권한 미허용 시 즉시 종료 (SecurityException 방지)
+        val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) {
+            com.ssafy.smartcane.util.AppLogger.error(TAG, "위치 권한 없음 - GPS 구독 생략")
+            return
+        }
+
         runCatching {
             val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
             locationManager = lm
@@ -308,12 +324,10 @@ class SafetyWalkService : Service() {
                 com.ssafy.smartcane.util.AppLogger.error(TAG, "GPS provider 없음")
                 return
             }
-            // GPS 업데이트 간격: 1초/1m (BleTestScreen 과 동일)
             providers.forEach { provider ->
                 lm.requestLocationUpdates(provider, 1_000L, 1f, gpsListener,
                     android.os.Looper.getMainLooper())
             }
-            // 즉시 사용할 수 있도록 캐시 위치로 초기화
             val cached = com.ssafy.smartcane.util.LocationHelper.getLastKnownLocation(this)
             if (cached != null) {
                 com.ssafy.smartcane.util.LocationHelper.updateLiveLocation(cached.first, cached.second)
@@ -321,21 +335,23 @@ class SafetyWalkService : Service() {
             }
             com.ssafy.smartcane.util.AppLogger.log(TAG, "GPS 실시간 구독 시작 (${providers.size}개 provider)")
 
-            // BleTestScreen 과 동일한 방식: 3초마다 마지막 위치를 서버로 전송
-            // GPS 콜백 유무와 무관하게 루프가 지속되므로 정지 상태에서도 추적됨
+            // 3초마다 위치 서버 전송, 실패 시 지수 백오프(최대 30초)로 서버 폭격 방지
             locationTrackingJob = hazardScope.launch {
+                var failures = 0
                 while (isActive) {
                     val loc = com.ssafy.smartcane.util.LocationHelper.getLastKnownLocation(this@SafetyWalkService)
                     if (loc != null) {
-                        runCatching {
+                        val ok = runCatching {
                             com.ssafy.smartcane.network.LocationApiService.sendLocation(
                                 deviceId = deviceId,
                                 lat = loc.first,
                                 lng = loc.second
                             )
-                        }
+                        }.isSuccess
+                        failures = if (ok) 0 else (failures + 1).coerceAtMost(4)
                     }
-                    kotlinx.coroutines.delay(3_000L)
+                    val delayMs = if (failures == 0) 3_000L else (3_000L * (1L shl failures)).coerceAtMost(30_000L)
+                    kotlinx.coroutines.delay(delayMs)
                 }
             }
         }.onFailure { e ->
@@ -419,6 +435,9 @@ class SafetyWalkService : Service() {
                                         "img ${raw.width}x${raw.height}→${rotated.width}x${rotated.height} " +
                                         "rgb($pr,$pg,$pb)${if (isGray) " ⚠️GRAY" else ""}")
                                     hazardAnalyzer?.analyzeBitmap(rotated)
+                                    // 시연 안정성: bitmap 명시적 recycle (OOM 방지)
+                                    if (rotated !== raw && !rotated.isRecycled) rotated.recycle()
+                                    if (!raw.isRecycled) raw.recycle()
                                 }
                             } finally {
                                 tfliteBusy.set(false)
