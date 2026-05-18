@@ -146,9 +146,9 @@ class AssistTrafficDetector(context: Context) : Closeable {
     private fun labelFor(index: Int): TrafficDetectionLabel? {
         return when (labels.getOrNull(index)) {
             "crosswalk" -> TrafficDetectionLabel.CROSSWALK
-            "green_light" -> TrafficDetectionLabel.GREEN_LIGHT
+            "green_pedestrian_light" -> TrafficDetectionLabel.GREEN_LIGHT
             "pedestrian_traffic_light" -> TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT
-            "red_light" -> TrafficDetectionLabel.RED_LIGHT
+            "red_pedestrian_light" -> TrafficDetectionLabel.RED_LIGHT
             else -> null
         }
     }
