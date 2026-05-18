@@ -175,7 +175,8 @@
   <button id="btn-sidewalk" class="toggle-btn off" onclick="toggleLayer('sidewalk')">인도 OFF</button>
   <button id="btn-crosswalk" class="toggle-btn" onclick="toggleLayer('crosswalk')">횡단보도 ON</button>
   <button id="btn-nodes" class="toggle-btn off" onclick="toggleNodes()">교차로 OFF</button>
-  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명 &nbsp;|&nbsp; 교차로: <span id="node-count">0</span>개</div>
+  <button id="btn-trafficlight" class="toggle-btn" onclick="toggleLayer('trafficlight')">신호등 ON</button>
+  <div id="status">위험구간: <span id="count">0</span>개 &nbsp;|&nbsp; 보행자: <span id="walker-count">0</span>명 &nbsp;|&nbsp; 교차로: <span id="node-count">0</span>개 &nbsp;|&nbsp; 신호등: <span id="tl-count">0</span>개</div>
   <span id="sse-status">SSE 연결 중...</span>
 </div>
 
@@ -213,6 +214,7 @@
   <div class="legend-item"><div class="legend-dot" style="background:#ffc107"></div> 공사구역 주의구역</div>
   <div class="legend-item" style="margin-top:8px"><div class="legend-dot" style="background:#29B6F6"></div> 보행자 (실시간)</div>
   <div class="legend-item"><div class="legend-dot" style="background:#00E676; border-color:#00E676"></div> 교차로 노드 (ITS)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#FFD600; border-color:#FFD600"></div> 신호등</div>
 </div>
 
 <script>
@@ -246,6 +248,59 @@ const TYPE_KO = {
 const osmLayer = new ol.layer.Tile({
   source: new ol.source.OSM()
 });
+
+// ── 신호등 레이어 ──────────────────────────────────────────
+const tlSource = new ol.source.Vector();
+const tlLayer  = new ol.layer.Vector({ source: tlSource, visible: true });
+
+function tlStyle() {
+  return new ol.style.Style({
+    image: new ol.style.RegularShape({
+      points: 4,
+      radius: 8,
+      angle: Math.PI / 4,
+      fill: new ol.style.Fill({ color: '#FFD600' }),
+      stroke: new ol.style.Stroke({ color: '#fff', width: 1.5 })
+    })
+  });
+}
+
+let tlVisible = true;
+let tlFetching = false;
+let tlDebounceTimer = null;
+
+function loadTrafficLights() {
+  if (!tlVisible || tlFetching) return;
+  const size = map.getSize();
+  if (!size || size[0] === 0) return;
+  const extent = ol.proj.transformExtent(
+    map.getView().calculateExtent(size), 'EPSG:3857', 'EPSG:4326'
+  );
+  tlFetching = true;
+  fetch(`/api/traffic-lights?minLng=${extent[0]}&minLat=${extent[1]}&maxLng=${extent[2]}&maxLat=${extent[3]}`)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(geojson => {
+      tlSource.clear();
+      geojson.features.forEach(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        const feature = new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([lng, lat])),
+          tlProps: f.properties
+        });
+        feature.setStyle(tlStyle());
+        tlSource.addFeature(feature);
+      });
+      document.getElementById('tl-count').textContent = geojson.totalCount;
+    })
+    .catch(e => console.error('신호등 로드 실패:', e))
+    .finally(() => { tlFetching = false; });
+}
+
+function loadTrafficLightsDebounced() {
+  if (!tlVisible) return;
+  clearTimeout(tlDebounceTimer);
+  tlDebounceTimer = setTimeout(loadTrafficLights, 400);
+}
 
 const hazardSource = new ol.source.Vector();
 const hazardLayer = new ol.layer.Vector({ source: hazardSource });
@@ -478,6 +533,16 @@ function showDetail(items) {
 let map, sidewalkLayer, crosswalkLayer;
 
 function toggleLayer(name) {
+  if (name === 'trafficlight') {
+    tlVisible = !tlVisible;
+    tlLayer.setVisible(tlVisible);
+    const btn = document.getElementById('btn-trafficlight');
+    btn.textContent = '신호등 ' + (tlVisible ? 'ON' : 'OFF');
+    btn.classList.toggle('off', !tlVisible);
+    if (tlVisible) loadTrafficLights();
+    else { tlSource.clear(); document.getElementById('tl-count').textContent = '0'; }
+    return;
+  }
   const layer = name === 'sidewalk' ? sidewalkLayer : crosswalkLayer;
   const btn = document.getElementById('btn-' + name);
   const visible = !layer.getVisible();
@@ -598,7 +663,7 @@ function loadHazardsDebounced() {
 
     map = new ol.Map({
       target: 'map',
-      layers: [osmLayer, sidewalkLayer, crosswalkLayer, nodeLayer, hazardLayer, walkerLayer],
+      layers: [osmLayer, sidewalkLayer, crosswalkLayer, nodeLayer, tlLayer, hazardLayer, walkerLayer],
       view: new ol.View({
         center: ol.proj.fromLonLat([126.8099, 35.2024]),
         zoom: 16
@@ -610,6 +675,20 @@ function loadHazardsDebounced() {
     // 호버 → 간단 툴팁
     map.on('pointermove', e => {
       const feature = map.forEachFeatureAtPixel(e.pixel, f => f);
+
+      // 신호등 호버
+      if (feature && feature.get('tlProps')) {
+        const tp = feature.get('tlProps');
+        document.getElementById('popup-type').textContent = '신호등';
+        document.getElementById('popup-confidence').textContent = tp.roadNameAddress || '-';
+        document.getElementById('popup-time').textContent = tp.managementNumber || '-';
+        document.getElementById('popup-count-line').style.display = 'none';
+        popup.style.display = 'block';
+        popup.style.left = (e.pixel[0] + 15) + 'px';
+        popup.style.top  = (e.pixel[1] - 10) + 'px';
+        map.getTargetElement().style.cursor = 'pointer';
+        return;
+      }
 
       // 교차로 노드 호버
       if (feature && feature.get('nodeProps')) {
@@ -661,9 +740,9 @@ function loadHazardsDebounced() {
 
     map.on('moveend', loadHazardsDebounced);
     map.on('moveend', loadNodesDebounced);
+    map.on('moveend', loadTrafficLightsDebounced);
 
-    // 맵이 완전히 렌더된 후 최초 1회 로드 (getSize()가 [0,0]인 타이밍 버그 방지)
-    map.once('rendercomplete', loadHazards);
+    map.once('rendercomplete', () => { loadHazards(); loadTrafficLights(); });
 
     // GPS로 초기 위치 이동 후 마커 로드
     if (navigator.geolocation) {

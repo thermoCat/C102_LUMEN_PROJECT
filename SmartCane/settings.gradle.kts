@@ -27,4 +27,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "SmartCane"
 include(":app")
+include(":wear")
  
