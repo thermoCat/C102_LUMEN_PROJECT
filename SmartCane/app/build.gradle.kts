@@ -60,6 +60,20 @@ android {
     androidResources {
         noCompress.add("tflite")
     }
+
+}
+
+tasks.register<Copy>("copyApk") {
+    val variantName = if (gradle.startParameter.taskNames.any { it.contains("Release") }) "release" else "debug"
+    from(layout.buildDirectory.dir("outputs/apk/$variantName"))
+    into(layout.buildDirectory.dir("outputs/named-apk"))
+    include("app-*.apk")
+    rename("app-(.*)\\.apk", "SmartCane.apk")
+}
+
+afterEvaluate {
+    tasks.named("assembleDebug").configure { finalizedBy("copyApk") }
+    tasks.named("assembleRelease").configure { finalizedBy("copyApk") }
 }
 
 dependencies {
@@ -94,4 +108,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    // Wearable Data Layer API (워치 ↔ 폰 메시지 전송)
+    implementation(libs.play.services.wearable)
+    implementation(libs.kotlinx.coroutines.play.services)
 }

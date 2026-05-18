@@ -15,6 +15,8 @@ import com.ssafy.smartcane.R
 import com.ssafy.smartcane.SmartCaneApplication
 import com.ssafy.smartcane.ble.BleNusManager
 import com.ssafy.smartcane.crosswalk.CrosswalkPipeline
+import com.ssafy.smartcane.crosswalk.PhoneSpeechOutput
+import com.ssafy.smartcane.crosswalk.WatchSpeechOutput
 import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.lumen2.assist.AssistEngine
 import com.ssafy.smartcane.lumen2.assist.AssistFeedbackController
@@ -82,10 +84,12 @@ class SafetyWalkActivity : ComponentActivity() {
         bleNusManager       = (application as SmartCaneApplication).bleNusManager
         proximityController = ProximityVibrationController(send = { cmd -> bleNusManager.sendCommand(cmd) })
 
+        val phoneSpeech = PhoneSpeechOutput(assistFeedback)
+        val speechOutput = WatchSpeechOutput(context = this, fallback = phoneSpeech)
         crosswalkPipeline = CrosswalkPipeline(
             context = this,
             bleNusManager = bleNusManager,
-            speak = { text -> assistFeedback.speak(text) }
+            speechOutput = speechOutput
         )
         headingProvider = HeadingProvider(this) { heading ->
             crosswalkPipeline.currentHeading = heading

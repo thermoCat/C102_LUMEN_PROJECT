@@ -18,7 +18,7 @@ import kotlin.math.*
 class CrosswalkPipeline(
     private val context: Context,
     private val bleNusManager: BleNusManager,
-    private val speak: (String) -> Unit
+    private val speechOutput: SpeechOutput
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -45,7 +45,7 @@ class CrosswalkPipeline(
         if (now - lastSignalSpeakMs < SIGNAL_COOLDOWN_MS) return
         lastSignalSpeakMs = now
         val text = if (green) "녹색 신호입니다. 건너세요." else "적색 신호입니다. 기다리세요."
-        speak(text)
+        speechOutput.speak(text)
     }
 
     fun onCrosswalkDetected() {
@@ -95,9 +95,7 @@ class CrosswalkPipeline(
             buildGuidanceFromDb(lights)
         }
 
-        withContext(Dispatchers.Main) {
-            speak(guidance)
-        }
+        speechOutput.speak(guidance)
         Log.d(TAG, "음성 안내: $guidance")
     }
 
