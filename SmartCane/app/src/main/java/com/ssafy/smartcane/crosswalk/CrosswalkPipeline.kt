@@ -12,7 +12,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.*
 
 class CrosswalkPipeline(
@@ -33,10 +32,11 @@ class CrosswalkPipeline(
         private const val GPS_SAMPLE_COUNT = 5
         private const val GPS_SAMPLE_INTERVAL_MS = 800L
         private const val GPS_OUTLIER_THRESHOLD_M = 15.0
-        private const val DIRECTION_MATCH_DEG = 45.0
     }
 
     // 2단계: 처음 감지 or 신호 변경 시에만 1회 발화
+    // 신호 상태 변경 시에만 발화
+
     private var lastSignalState: Boolean? = null   // null=미감지, true=녹색, false=적색
     private var lastSignalDetectedMs = 0L
     private val SIGNAL_RESET_MS = 20_000L          // 20초간 신호 없으면 상태 초기화
@@ -73,14 +73,14 @@ class CrosswalkPipeline(
     }
 
     private suspend fun runPipeline() {
-        // 1. 3~5초 GPS 수집 후 튀는값 제거
+        // 1. GPS 수집 후 튀는값 제거
         val samples = collectGpsSamples()
         val stableLoc = removeOutliersAndAverage(samples) ?: run {
             Log.w(TAG, "안정적인 GPS 위치를 얻을 수 없습니다")
             return
         }
 
-        // 2. 가장 가까운 신호등 최대 2개 조회 (10m 이내)
+        // 2. 가장 가까운 신호등 1개 조회 (10m 이내)
         val lights = TrafficLightApiService.fetchNearest(stableLoc.first, stableLoc.second)
         if (lights.isEmpty()) {
             Log.d(TAG, "10m 이내 신호등 없음")
@@ -88,6 +88,7 @@ class CrosswalkPipeline(
         }
 
         // 3. 도로명 주소 안내
+        // 3. road_route_name 기반 음성 안내
         val guidance = buildGuidanceFromAddress(lights)
         speechOutput.speak(guidance)
         Log.d(TAG, "음성 안내: $guidance")
@@ -116,10 +117,11 @@ class CrosswalkPipeline(
         return Pair(filtered.map { it.first }.average(), filtered.map { it.second }.average())
     }
 
-    // ── 도로 노선명 기반 안내 ─────────────────────────────────────────────
+    // ── 가장 가까운 신호등 road_route_name 안내 ──────────────────────────
     private fun buildGuidanceFromAddress(lights: List<NearestTrafficLight>): String {
-        val routeName = lights.firstOrNull { !it.roadRouteName.isNullOrBlank() }?.roadRouteName
-        return if (routeName != null) {
+        val routeName = lights.firstOrNull()?.roadRouteName
+        return if (!routeName.isNullOrBlank()) {
+
             "${routeName} 신호등입니다"
         } else {
             "근처에 신호등이 있습니다"
@@ -181,7 +183,6 @@ class CrosswalkPipeline(
 //        return diff in 90.0..270.0
 //    }
 
-    /** Haversine 거리 (미터) */
     private fun haversine(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
         val r = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)

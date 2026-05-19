@@ -680,8 +680,8 @@ function loadHazardsDebounced() {
       if (feature && feature.get('tlProps')) {
         const tp = feature.get('tlProps');
         document.getElementById('popup-type').textContent = '신호등';
-        document.getElementById('popup-confidence').textContent = tp.roadNameAddress || '-';
-        document.getElementById('popup-time').textContent = tp.managementNumber || '-';
+        document.getElementById('popup-confidence').textContent = tp.roadRouteName || '-';
+        document.getElementById('popup-time').textContent = '';
         document.getElementById('popup-count-line').style.display = 'none';
         popup.style.display = 'block';
         popup.style.left = (e.pixel[0] + 15) + 'px';
