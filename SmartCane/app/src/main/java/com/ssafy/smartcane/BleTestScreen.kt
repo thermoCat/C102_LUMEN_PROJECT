@@ -441,7 +441,14 @@ private fun ControlTab(
 
         // ── AI 위험 감지 (기존 모델 — 자동 신고) ─────────────
         Button(
-            onClick = { onOpenModel(TFLiteRunner.DEFAULT_MODEL_FILE_NAME) },
+            onClick = {
+                context.startActivity(
+                    android.content.Intent(
+                        context,
+                        com.ssafy.smartcane.segformer.SegFormerActivity::class.java
+                    )
+                )
+            },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
             shape = RoundedCornerShape(10.dp)

@@ -1,0 +1,233 @@
+{
+  "num_classes": 7,
+  "classes": [
+    {
+      "id": 0,
+      "name": "background"
+    },
+    {
+      "id": 1,
+      "name": "caution_zone"
+    },
+    {
+      "id": 2,
+      "name": "bike_lane"
+    },
+    {
+      "id": 3,
+      "name": "alley"
+    },
+    {
+      "id": 4,
+      "name": "roadway"
+    },
+    {
+      "id": 5,
+      "name": "braille_guide_blocks"
+    },
+    {
+      "id": 6,
+      "name": "sidewalk"
+    }
+  ],
+  "rgb_to_class_id": [
+    {
+      "rgb": [
+        0,
+        0,
+        0
+      ],
+      "class_id": 0,
+      "class_name": "background"
+    },
+    {
+      "rgb": [
+        0,
+        255,
+        0
+      ],
+      "class_id": 1,
+      "class_name": "caution_zone"
+    },
+    {
+      "rgb": [
+        105,
+        105,
+        255
+      ],
+      "class_id": 1,
+      "class_name": "caution_zone"
+    },
+    {
+      "rgb": [
+        255,
+        0,
+        0
+      ],
+      "class_id": 1,
+      "class_name": "caution_zone"
+    },
+    {
+      "rgb": [
+        255,
+        128,
+        0
+      ],
+      "class_id": 1,
+      "class_name": "caution_zone"
+    },
+    {
+      "rgb": [
+        255,
+        192,
+        0
+      ],
+      "class_id": 1,
+      "class_name": "caution_zone"
+    },
+    {
+      "rgb": [
+        255,
+        155,
+        155
+      ],
+      "class_id": 2,
+      "class_name": "bike_lane"
+    },
+    {
+      "rgb": [
+        88,
+        38,
+        128
+      ],
+      "class_id": 3,
+      "class_name": "alley"
+    },
+    {
+      "rgb": [
+        138,
+        60,
+        200
+      ],
+      "class_id": 3,
+      "class_name": "alley"
+    },
+    {
+      "rgb": [
+        208,
+        88,
+        255
+      ],
+      "class_id": 3,
+      "class_name": "alley"
+    },
+    {
+      "rgb": [
+        230,
+        170,
+        255
+      ],
+      "class_id": 3,
+      "class_name": "alley"
+    },
+    {
+      "rgb": [
+        255,
+        0,
+        255
+      ],
+      "class_id": 4,
+      "class_name": "roadway"
+    },
+    {
+      "rgb": [
+        255,
+        128,
+        255
+      ],
+      "class_id": 4,
+      "class_name": "roadway"
+    },
+    {
+      "rgb": [
+        128,
+        96,
+        0
+      ],
+      "class_id": 5,
+      "class_name": "braille_guide_blocks"
+    },
+    {
+      "rgb": [
+        255,
+        255,
+        0
+      ],
+      "class_id": 5,
+      "class_name": "braille_guide_blocks"
+    },
+    {
+      "rgb": [
+        0,
+        0,
+        255
+      ],
+      "class_id": 6,
+      "class_name": "sidewalk"
+    },
+    {
+      "rgb": [
+        55,
+        86,
+        35
+      ],
+      "class_id": 6,
+      "class_name": "sidewalk"
+    },
+    {
+      "rgb": [
+        110,
+        168,
+        70
+      ],
+      "class_id": 6,
+      "class_name": "sidewalk"
+    },
+    {
+      "rgb": [
+        128,
+        128,
+        128
+      ],
+      "class_id": 6,
+      "class_name": "sidewalk"
+    },
+    {
+      "rgb": [
+        198,
+        89,
+        17
+      ],
+      "class_id": 6,
+      "class_name": "sidewalk"
+    },
+    {
+      "rgb": [
+        217,
+        217,
+        217
+      ],
+      "class_id": 6,
+      "class_name": "sidewalk"
+    },
+    {
+      "rgb": [
+        255,
+        230,
+        153
+      ],
+      "class_id": 6,
+      "class_name": "sidewalk"
+    }
+  ]
+}

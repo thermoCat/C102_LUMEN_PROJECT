@@ -1,0 +1,46 @@
+{
+    "model_id": "segformer_train_test",
+    "model_name": "SegFormer B0 7-Class Train Test",
+    "runtime": "tflite",
+    "precision": "float",
+    "tool_versions": {
+        "qairt": "2.45.0.260326154327",
+        "litert": "1.4.3"
+    },
+    "model_files": {
+        "segformer_train_test.tflite": {
+            "inputs": {
+                "image": {
+                    "shape": [
+                        1,
+                        512,
+                        512,
+                        3
+                    ],
+                    "dtype": "float32",
+                    "io_type": "image",
+                    "image_metadata": {},
+                    "value_range": [
+                        0.0,
+                        1.0
+                    ]
+                }
+            },
+            "outputs": {
+                "mask": {
+                    "shape": [
+                        1,
+                        512,
+                        512
+                    ],
+                    "dtype": "int32",
+                    "description": "7-class semantic segmentation class-id mask"
+                }
+            }
+        }
+    },
+    "supplementary_files": {
+        "class_map.json": "Mapping of model prediction indices -> 7-class labels.",
+        "labels.txt": "Line-based 7-class label fallback."
+    }
+}

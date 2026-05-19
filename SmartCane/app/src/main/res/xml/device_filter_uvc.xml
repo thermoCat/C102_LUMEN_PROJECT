@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    USB device filter for external UVC cameras.
+
+    Specific entry: DJI Osmo Action 4 (VID 0x2CA3 = 11427, PID 0x0023 = 35).
+    Generic entry: USB Video Class (class 14, subclass 2 = Video Streaming) so
+                   any other UVC webcam is also picked up if the Osmo is absent.
+-->
+<resources>
+    <usb-device vendor-id="11427" product-id="35" />
+    <usb-device class="14" subclass="2" />
+</resources>
