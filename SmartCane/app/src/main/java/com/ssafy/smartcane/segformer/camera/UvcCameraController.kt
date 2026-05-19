@@ -55,6 +55,7 @@ class UvcCameraController(
     private val targetVendorId: Int? = null,
     private val targetProductId: Int? = null,
     private val targetDeviceName: String? = null,
+    private val onBitmap: ((Bitmap) -> Unit)? = null,
 ) {
     private var client: MultiCameraClient? = null
     private var camera: MultiCameraClient.Camera? = null
@@ -303,6 +304,13 @@ class UvcCameraController(
                         outputHeight = ANALYSIS_HEIGHT,
                     )
 
+                    // YOLO 병렬 분기: SegFormer 추론 전, 같은 버퍼로부터 Bitmap 복제
+                    onBitmap?.let { cb ->
+                        runCatching { rgbaToBitmap(buffer, ANALYSIS_WIDTH, ANALYSIS_HEIGHT) }
+                            .getOrNull()
+                            ?.let(cb)
+                    }
+
                     val started = SystemClock.elapsedRealtime()
                     val result = seg.segment(
                         rgba = buffer,
@@ -463,6 +471,25 @@ class UvcCameraController(
             }
         }
         out.flip()
+    }
+
+    /**
+     * SegFormer 입력으로 쓰는 RGBA8888 ByteBuffer 를 YOLO(TFLiteRunner) 입력용
+     * ARGB_8888 Bitmap 으로 복제한다. 호출자가 사용 후 recycle 해야 한다.
+     * buffer 의 position/limit 은 호출 전후로 변경되지 않도록 readonly slice 사용.
+     */
+    private fun rgbaToBitmap(buffer: ByteBuffer, width: Int, height: Int): Bitmap {
+        val pixels = buffer.asReadOnlyBuffer()
+        pixels.rewind()
+        val argb = IntArray(width * height)
+        for (index in argb.indices) {
+            val r = pixels.get().toInt() and 0xFF
+            val g = pixels.get().toInt() and 0xFF
+            val b = pixels.get().toInt() and 0xFF
+            pixels.get() // alpha 스킵
+            argb[index] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
+        return Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
     }
 
     private fun publishPreviewFrame(buffer: ByteBuffer, width: Int, height: Int) {

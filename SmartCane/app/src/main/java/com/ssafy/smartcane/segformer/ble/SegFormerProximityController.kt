@@ -2,6 +2,7 @@ package com.ssafy.smartcane.segformer.ble
 
 import android.os.Handler
 import android.os.Looper
+import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.segformer.model.SegmentationResult
 import kotlin.math.abs
 
@@ -11,10 +12,13 @@ import kotlin.math.abs
  *
  * 정면 [dangerThresholdM] m 이내, 좌우 ±[lateralThresholdM] m 안에서 위험 클래스
  * (차도/자전거도로/골목/주의구역)가 감지되면 진동 시퀀스를 전송한다.
+ *
+ * SegFormer + YOLO 병렬 운영: YOLO 가 횡단보도/적색 신호를 감지해도 진동 트리거.
  */
 class SegFormerProximityController(
     private val send: (String) -> Unit,
     private val dangerClassNames: Set<String> = DEFAULT_DANGER_CLASSES,
+    private val yoloDangerLabels: Set<String> = DEFAULT_YOLO_DANGER_LABELS,
     private val dangerThresholdM: Float = 2.0f,
     private val lateralThresholdM: Float = 1.2f,
     private val cooldownMs: Long = 2000L,
@@ -36,7 +40,10 @@ class SegFormerProximityController(
     // Phase 1-C: raw danger=false 스트릭 시작 시각 (0 = 진행 중 아님)
     private var dangerExitedAt = 0L
 
-    fun update(result: SegmentationResult) {
+    fun update(
+        result: SegmentationResult,
+        yoloDetections: List<TFLiteRunner.Result> = emptyList(),
+    ) {
         val now = System.currentTimeMillis()
 
         // Phase 1-A: 프레임 신선도 — 1초 이상 update 누락 시 강제 초기화
@@ -50,7 +57,7 @@ class SegFormerProximityController(
         }
         lastUpdateAt = now
 
-        val raw = hasDanger(result)
+        val raw = hasDanger(result) || hasYoloDanger(yoloDetections)
 
         // Phase 1-B/1-C: 스트릭 타이머 갱신
         if (raw) {
@@ -112,6 +119,16 @@ class SegFormerProximityController(
         }
     }
 
+    /**
+     * YOLO 위험 감지 — 횡단보도/적색 신호 발견 시 trigger.
+     * TFLiteRunner.detectAll() 이 이미 클래스별 confidence threshold + NMS 를 적용했으므로
+     * 여기서는 라벨 화이트리스트 매칭만 한다.
+     */
+    private fun hasYoloDanger(detections: List<TFLiteRunner.Result>): Boolean {
+        if (detections.isEmpty() || yoloDangerLabels.isEmpty()) return false
+        return detections.any { it.label in yoloDangerLabels }
+    }
+
     private fun playTriple() {
         sequencePlaying = true
         send("B3")
@@ -130,11 +147,19 @@ class SegFormerProximityController(
     }
 
     companion object {
+        // 진동 트리거 클래스: caution_zone(주의구역) / roadway(차도) 만.
+        // bike_lane, alley 는 일반적 보행 가능 통로로 간주 → 진동 제외.
         val DEFAULT_DANGER_CLASSES: Set<String> = setOf(
             "caution_zone",
-            "bike_lane",
-            "alley",
             "roadway",
+        )
+
+        // YOLO 4클래스 중 위험 신호로 사용할 라벨
+        // green_pedestrian_light = 안전(횡단 가능) → 제외
+        // pedestrian_traffic_light = 신호등 본체 → 제외 (red/green 으로 충분)
+        val DEFAULT_YOLO_DANGER_LABELS: Set<String> = setOf(
+            "crosswalk",
+            "red_pedestrian_light",
         )
     }
 }

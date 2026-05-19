@@ -1,10 +1,12 @@
 ﻿package com.ssafy.smartcane.segformer.camera
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -24,6 +26,7 @@ class CameraController(
     private val onResult: (SegmentationResult) -> Unit,
     private val onError: (Throwable) -> Unit,
     private val onCameraBound: (lensFacing: Int, diagnostic: String) -> Unit = { _, _ -> },
+    private val onBitmap: ((Bitmap) -> Unit)? = null,
 ) {
     /**
      * Binds the segmentation pipeline to a CameraX camera. Tries lens-facings
@@ -87,6 +90,10 @@ class CameraController(
 
                     analysis.setAnalyzer(analyzerExecutor) { image ->
                         try {
+                            // YOLO 병렬 분기: 원본 프레임을 Bitmap으로 복제 후 콜백
+                            onBitmap?.let { cb ->
+                                runCatching { extractRgbaBitmap(image) }.getOrNull()?.let(cb)
+                            }
                             val startedAt = SystemClock.elapsedRealtime()
                             val result = segmenter.segment(image)
                             onResult(
@@ -147,6 +154,29 @@ class CameraController(
             },
             ContextCompat.getMainExecutor(context),
         )
+    }
+
+    /**
+     * ImageAnalysis(OUTPUT_IMAGE_FORMAT_RGBA_8888)이 전달한 ImageProxy 의
+     * 첫 plane(packed RGBA) 을 ARGB_8888 Bitmap 으로 복제한다.
+     * row padding 이 있으면 잘라낸다. 호출자는 사용 후 recycle 책임.
+     */
+    private fun extractRgbaBitmap(image: ImageProxy): Bitmap {
+        val plane = image.planes[0]
+        val buffer = plane.buffer
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * image.width
+        val paddedWidth = image.width + if (pixelStride > 0) rowPadding / pixelStride else 0
+        val padded = Bitmap.createBitmap(paddedWidth, image.height, Bitmap.Config.ARGB_8888)
+        padded.copyPixelsFromBuffer(buffer)
+        return if (rowPadding > 0 && paddedWidth > image.width) {
+            val cropped = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
+            if (cropped !== padded && !padded.isRecycled) padded.recycle()
+            cropped
+        } else {
+            padded
+        }
     }
 
     companion object {
