@@ -49,6 +49,7 @@ public class TrafficLightGeoJsonResponse {
                 t.getId(),
                 t.getManagementNumber(),
                 t.getRoadNameAddress(),
+                t.getRoadRouteName(),
                 t.getTrafficLightType(),
                 t.getFacingDirection()
             );
@@ -72,16 +73,19 @@ public class TrafficLightGeoJsonResponse {
         private String managementNumber;
         @JsonProperty("roadNameAddress")
         private String roadNameAddress;
+        @JsonProperty("roadRouteName")
+        private String roadRouteName;
         @JsonProperty("trafficLightType")
         private Short trafficLightType;
         @JsonProperty("facingDirection")
         private BigDecimal facingDirection;
 
         public Properties(Long id, String managementNumber, String roadNameAddress,
-                          Short trafficLightType, BigDecimal facingDirection) {
+                          String roadRouteName, Short trafficLightType, BigDecimal facingDirection) {
             this.id = id;
             this.managementNumber = managementNumber;
             this.roadNameAddress = roadNameAddress;
+            this.roadRouteName = roadRouteName;
             this.trafficLightType = trafficLightType;
             this.facingDirection = facingDirection;
         }
@@ -89,6 +93,7 @@ public class TrafficLightGeoJsonResponse {
         public Long getId() { return id; }
         public String getManagementNumber() { return managementNumber; }
         public String getRoadNameAddress() { return roadNameAddress; }
+        public String getRoadRouteName() { return roadRouteName; }
         public Short getTrafficLightType() { return trafficLightType; }
         public BigDecimal getFacingDirection() { return facingDirection; }
     }

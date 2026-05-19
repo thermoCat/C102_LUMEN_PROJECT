@@ -12,7 +12,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.*
 
 class CrosswalkPipeline(
@@ -33,17 +32,19 @@ class CrosswalkPipeline(
         private const val GPS_SAMPLE_COUNT = 5
         private const val GPS_SAMPLE_INTERVAL_MS = 800L
         private const val GPS_OUTLIER_THRESHOLD_M = 15.0
-        private const val DIRECTION_MATCH_DEG = 45.0
     }
 
-    // 2단계: 사용자가 신호등을 바라볼 때 신호 상태 안내 (쿨다운 별도)
-    private var lastSignalSpeakMs = 0L
-    private val SIGNAL_COOLDOWN_MS = 8_000L
+    // 신호 상태 변경 시에만 발화
+    private var lastSignalState: Boolean? = null   // null=미감지, true=녹색, false=적색
+    private var lastSignalDetectedMs = 0L
+    private val SIGNAL_RESET_MS = 20_000L          // 20초간 신호 없으면 상태 초기화
 
     fun onSignalDetected(green: Boolean) {
         val now = System.currentTimeMillis()
-        if (now - lastSignalSpeakMs < SIGNAL_COOLDOWN_MS) return
-        lastSignalSpeakMs = now
+        if (now - lastSignalDetectedMs > SIGNAL_RESET_MS) lastSignalState = null
+        lastSignalDetectedMs = now
+        if (green == lastSignalState) return        // 같은 신호 → 발화 안 함
+        lastSignalState = green
         val text = if (green) "녹색 신호입니다. 건너세요." else "적색 신호입니다. 기다리세요."
         speechOutput.speak(text)
     }
@@ -70,31 +71,22 @@ class CrosswalkPipeline(
     }
 
     private suspend fun runPipeline() {
-        // 1. 3~5초 GPS 수집 후 튀는값 제거
+        // 1. GPS 수집 후 튀는값 제거
         val samples = collectGpsSamples()
         val stableLoc = removeOutliersAndAverage(samples) ?: run {
             Log.w(TAG, "안정적인 GPS 위치를 얻을 수 없습니다")
             return
         }
 
-        // 2. 가장 가까운 신호등 최대 2개 조회 (10m 이내)
+        // 2. 가장 가까운 신호등 1개 조회 (10m 이내)
         val lights = TrafficLightApiService.fetchNearest(stableLoc.first, stableLoc.second)
         if (lights.isEmpty()) {
             Log.d(TAG, "10m 이내 신호등 없음")
             return
         }
 
-        // 3. 방향 안내 음성 생성
-        val isWatchConnected = bleNusManager.connectionState.value ==
-            BleNusManager.ConnectionState.CONNECTED
-        val hasFacingData = lights.any { it.facingDirection != null }
-
-        val guidance = if (isWatchConnected && hasFacingData) {
-            buildGuidanceWithHeading(lights, currentHeading)
-        } else {
-            buildGuidanceFromDb(lights)
-        }
-
+        // 3. road_route_name 기반 음성 안내
+        val guidance = buildGuidanceFromAddress(lights)
         speechOutput.speak(guidance)
         Log.d(TAG, "음성 안내: $guidance")
     }
@@ -122,74 +114,52 @@ class CrosswalkPipeline(
         return Pair(filtered.map { it.first }.average(), filtered.map { it.second }.average())
     }
 
-    // ── 워치 있을 때: 현재 진행 방향과 신호등 방향 비교 ─────────────────
-    private fun buildGuidanceWithHeading(
-        lights: List<NearestTrafficLight>,
-        heading: Float
-    ): String {
-        if (lights.size == 1) {
-            val light = lights[0]
-            val dirName = facingDirectionToName(light.facingDirection)
-            return "${dirName} 방면 신호등입니다"
-        }
-
-        // 2개 = 교차로 꼭짓점 → 직진/좌우회전 안내
-        val sorted = lights.sortedBy { angularDiff(heading.toDouble(), it.facingDirection ?: 999.0) }
-        val primary = sorted[0]
-        val secondary = sorted[1]
-
-        val primaryDir = facingDirectionToName(primary.facingDirection)
-        val secondaryDir = facingDirectionToName(secondary.facingDirection)
-
-        // 두 번째 신호등이 좌측인지 우측인지 판단
-        val turnLabel = if (isLeftRelative(heading, secondary.facingDirection)) "좌회전" else "우회전"
-
-        return "직진은 ${primaryDir} 방면, ${turnLabel} 시 ${secondaryDir} 방면 신호등입니다"
-    }
-
-    // ── 워치 없을 때: DB의 facing_direction 이름만 안내 ─────────────────
-    private fun buildGuidanceFromDb(lights: List<NearestTrafficLight>): String {
-        return if (lights.size == 1) {
-            "${facingDirectionToName(lights[0].facingDirection)} 방면 신호등입니다"
+    // ── 가장 가까운 신호등 road_route_name 안내 ──────────────────────────
+    private fun buildGuidanceFromAddress(lights: List<NearestTrafficLight>): String {
+        val routeName = lights.firstOrNull()?.roadRouteName
+        return if (!routeName.isNullOrBlank()) {
+            "${routeName} 신호등입니다"
         } else {
-            val dir1 = facingDirectionToName(lights[0].facingDirection)
-            val dir2 = facingDirectionToName(lights[1].facingDirection)
-            "${dir1} 방면 또는 ${dir2} 방면 신호등입니다"
+            "근처에 신호등이 있습니다"
         }
     }
 
-    // ── 유틸 ─────────────────────────────────────────────────────────────
+    // ── 각도 기반 방위 안내 (비활성화) ───────────────────────────────────
+//    private fun buildGuidanceWithHeading(lights: List<NearestTrafficLight>, heading: Float): String {
+//        if (lights.size == 1) return "${facingDirectionToName(lights[0].facingDirection)} 방면 신호등입니다"
+//        val sorted = lights.sortedBy { angularDiff(heading.toDouble(), it.facingDirection ?: 999.0) }
+//        val primaryDir = facingDirectionToName(sorted[0].facingDirection)
+//        val secondaryDir = facingDirectionToName(sorted[1].facingDirection)
+//        val turnLabel = if (isLeftRelative(heading, sorted[1].facingDirection)) "좌회전" else "우회전"
+//        return "직진은 ${primaryDir} 방면, ${turnLabel} 시 ${secondaryDir} 방면 신호등입니다"
+//    }
 
-    /** facing_direction 각도 → 방위명 */
-    private fun facingDirectionToName(degrees: Double?): String {
-        if (degrees == null) return "전방"
-        val d = ((degrees % 360) + 360) % 360
-        return when {
-            d < 22.5 || d >= 337.5 -> "북쪽"
-            d < 67.5  -> "북동쪽"
-            d < 112.5 -> "동쪽"
-            d < 157.5 -> "남동쪽"
-            d < 202.5 -> "남쪽"
-            d < 247.5 -> "남서쪽"
-            d < 292.5 -> "서쪽"
-            else      -> "북서쪽"
-        }
-    }
+//    private fun facingDirectionToName(degrees: Double?): String {
+//        if (degrees == null) return "전방"
+//        val d = ((degrees % 360) + 360) % 360
+//        return when {
+//            d < 22.5 || d >= 337.5 -> "북쪽"
+//            d < 67.5  -> "북동쪽"
+//            d < 112.5 -> "동쪽"
+//            d < 157.5 -> "남동쪽"
+//            d < 202.5 -> "남쪽"
+//            d < 247.5 -> "남서쪽"
+//            d < 292.5 -> "서쪽"
+//            else      -> "북서쪽"
+//        }
+//    }
 
-    /** 두 각도의 절댓값 차이 (0~180) */
-    private fun angularDiff(a: Double, b: Double): Double {
-        val diff = abs(a - b) % 360
-        return if (diff > 180) 360 - diff else diff
-    }
+//    private fun angularDiff(a: Double, b: Double): Double {
+//        val diff = abs(a - b) % 360
+//        return if (diff > 180) 360 - diff else diff
+//    }
 
-    /** heading 기준으로 target이 좌측인지 여부 */
-    private fun isLeftRelative(heading: Float, targetDeg: Double?): Boolean {
-        targetDeg ?: return false
-        val diff = ((targetDeg - heading + 360) % 360)
-        return diff in 90.0..270.0
-    }
+//    private fun isLeftRelative(heading: Float, targetDeg: Double?): Boolean {
+//        targetDeg ?: return false
+//        val diff = ((targetDeg - heading + 360) % 360)
+//        return diff in 90.0..270.0
+//    }
 
-    /** Haversine 거리 (미터) */
     private fun haversine(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
         val r = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)

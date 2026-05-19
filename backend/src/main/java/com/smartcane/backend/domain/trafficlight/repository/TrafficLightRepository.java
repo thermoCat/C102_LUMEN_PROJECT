@@ -56,7 +56,7 @@ public interface TrafficLightRepository extends JpaRepository<TrafficLight, Long
                 location,
                 ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography
             )
-            LIMIT 2
+            LIMIT 1
             """, nativeQuery = true)
     List<TrafficLight> findNearest2(
             @Param("latitude") double latitude,
