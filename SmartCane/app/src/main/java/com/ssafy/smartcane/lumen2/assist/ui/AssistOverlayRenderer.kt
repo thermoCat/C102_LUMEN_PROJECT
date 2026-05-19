@@ -12,6 +12,9 @@ import android.graphics.RectF
 class AssistOverlayRenderer {
     private companion object {
         private const val TACTILE_TEXTURE_SIZE = 256
+        private const val PANEL_RIGHT_MARGIN = 24f
+        private const val PANEL_WIDTH = 270f
+        private const val PANEL_TITLE_TEXT_SIZE = 38f
     }
 
     private var reusableBitmap: Bitmap? = null
@@ -125,14 +128,14 @@ class AssistOverlayRenderer {
         isFakeBoldText = true
     }
 
-    fun render(width: Int, height: Int, decision: AssistDecision): Bitmap {
+    fun render(width: Int, height: Int, decision: AssistDecision, topInsetPx: Float = 0f): Bitmap {
         val bitmap = reusableBitmap
             ?.takeIf { it.width == width && it.height == height }
             ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { reusableBitmap = it }
         bitmap.eraseColor(Color.TRANSPARENT)
         val canvas = Canvas(bitmap)
         drawGuidePathVisualization(canvas, decision)
-        val panelBottom = drawGuidancePanel(canvas, width, decision)
+        val panelBottom = drawGuidancePanel(canvas, width, decision, topInsetPx)
         drawSituationAlerts(canvas, width, panelBottom, decision)
         return bitmap
     }
@@ -173,34 +176,38 @@ class AssistOverlayRenderer {
         drawTrafficDetections(canvas, visualization)
     }
 
-    private fun drawGuidancePanel(canvas: Canvas, width: Int, decision: AssistDecision): Float {
-        val left = 24f
-        val top = 24f
-        val right = minOf(width * 0.9f, left + 900f)
-        val panelWidth = right - left
-        val panelBottom = top + 280f
+    private fun drawGuidancePanel(canvas: Canvas, width: Int, decision: AssistDecision, topInsetPx: Float = 0f): Float {
+        val right = width - PANEL_RIGHT_MARGIN
+        val left = right - PANEL_WIDTH
+        val top = topInsetPx
         val accentColor = colorForState(decision.state)
-        panelBorderPaint.color = accentColor
-        canvas.drawRoundRect(left, top, right, panelBottom, 30f, 30f, panelPaint)
-        canvas.drawRoundRect(left, top, right, panelBottom, 30f, 30f, panelBorderPaint)
 
         val badgeText = stateLabel(decision.state)
-        val badgeLeft = left + 24f
-        val badgeTop = top + 22f
-        val badgeWidth = badgeTextPaint.measureText(badgeText) + 36f
-        val badgeBottom = badgeTop + 42f
-        badgePaint.color = accentColor
-        canvas.drawRoundRect(
-            RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeBottom),
-            18f,
-            18f,
-            badgePaint
-        )
-        canvas.drawText(badgeText, badgeLeft + 18f, badgeBottom - 11f, badgeTextPaint)
+        val badgePadH = 16f
+        val badgeH = badgeTextPaint.textSize + 20f
+        val badgeW = badgeTextPaint.measureText(badgeText) + badgePadH * 2
 
-        var contentY = badgeBottom + 34f
+        val panelPad = 14f
+        val panelH = panelPad + badgeH + 10f + PANEL_TITLE_TEXT_SIZE + panelPad
+        val panelBottom = top + panelH
+
+        panelBorderPaint.color = accentColor
+        canvas.drawRoundRect(left, top, right, panelBottom, 20f, 20f, panelPaint)
+        canvas.drawRoundRect(left, top, right, panelBottom, 20f, 20f, panelBorderPaint)
+
+        val badgeLeft = left + panelPad
+        val badgeTop = top + panelPad
+        val badgeBottom = badgeTop + badgeH
+        badgePaint.color = accentColor
+        canvas.drawRoundRect(RectF(badgeLeft, badgeTop, badgeLeft + badgeW, badgeBottom), 12f, 12f, badgePaint)
+        canvas.drawText(badgeText, badgeLeft + badgePadH, badgeBottom - 7f, badgeTextPaint)
+
+        val savedSize = titlePaint.textSize
+        titlePaint.textSize = PANEL_TITLE_TEXT_SIZE
         titlePaint.color = accentColor
-        contentY = drawWrappedText(canvas, primaryGuidance(decision), left + 24f, contentY, panelWidth - 48f, titlePaint, 14f, 2)
+        canvas.drawText(primaryGuidance(decision), left + panelPad, badgeBottom + 10f + PANEL_TITLE_TEXT_SIZE, titlePaint)
+        titlePaint.textSize = savedSize
+
         return panelBottom
     }
 
@@ -210,19 +217,19 @@ class AssistOverlayRenderer {
             trafficAlert(decision)
         )
         if (alerts.isEmpty()) return
-        val left = 24f
-        val right = minOf(width * 0.9f, left + 900f)
-        var top = panelBottom + 12f
+        val right = width - PANEL_RIGHT_MARGIN
+        var top = panelBottom + 10f
         alerts.forEach { alert ->
             val textWidth = bodyPaint.measureText(alert.text)
-            val boxWidth = (textWidth + 42f).coerceAtLeast(260f).coerceAtMost(right - left)
-            val bottom = top + 58f
+            val boxWidth = (textWidth + 36f).coerceAtLeast(160f).coerceAtMost(PANEL_WIDTH)
+            val left = right - boxWidth
+            val bottom = top + 50f
             badgePaint.color = alert.color
-            canvas.drawRoundRect(left, top, left + boxWidth, bottom, 18f, 18f, trafficLabelBgPaint)
-            canvas.drawRoundRect(left, top, left + boxWidth, bottom, 18f, 18f, badgePaint)
+            canvas.drawRoundRect(left, top, right, bottom, 14f, 14f, trafficLabelBgPaint)
+            canvas.drawRoundRect(left, top, right, bottom, 14f, 14f, badgePaint)
             bodyPaint.color = Color.WHITE
-            canvas.drawText(alert.text, left + 18f, bottom - 18f, bodyPaint)
-            top = bottom + 10f
+            canvas.drawText(alert.text, left + 14f, bottom - 14f, bodyPaint)
+            top = bottom + 8f
         }
         bodyPaint.color = Color.argb(235, 244, 247, 250)
     }

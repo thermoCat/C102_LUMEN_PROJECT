@@ -15,8 +15,6 @@ class AssistEngine {
     private var candidateSince = 0L
     private var lastSpokenAt = 0L
     private var lastVibratedAt = 0L
-    private var lastIntersectionSpokenAt = 0L
-    private val INTERSECTION_SPEECH_COOLDOWN = 8000L
     private val semanticStabilizer = AssistSemanticStabilizer()
     private val curbBoundaryStabilizer = AssistCurbBoundaryStabilizer()
     private val trafficStabilizer = AssistTrafficStabilizer()
@@ -59,23 +57,19 @@ class AssistEngine {
             trafficEvidence = stableTrafficEvidence
         )
 
-        // 음성 안내 우선순위: 신호등 > 연석 > 카메라 각도
-        val intersectionSpeech = intersectionSpeech(stableTrafficEvidence, nowMillis)
-        if (intersectionSpeech != null) lastIntersectionSpokenAt = nowMillis
-
-        val curbSpeech = if (curbBoundary.status == CurbBoundaryStatus.DETECTED && nowMillis - lastSpokenAt > 3500L) {
+        // 음성 안내: 연석 > 카메라 각도 (횡단보도/신호는 CrosswalkPipeline에서 단일 처리)
+        val curbSpeech = if (curbBoundary.status == CurbBoundaryStatus.DETECTED && nowMillis - lastSpokenAt > 8000L) {
             "연석이 있습니다. 주의하세요."
         } else null
 
         val commandSpeechText = commandSpeech(command)
-        
-        // 사용자의 요청: 연석과 각도 조절만 음성 안내, 나머지는 진동
-        val speech = intersectionSpeech ?: curbSpeech ?: if (command == AssistCommand.CAMERA_ADJUST) commandSpeechText else null
-        
+
+        val speech = curbSpeech ?: if (command == AssistCommand.CAMERA_ADJUST) commandSpeechText else null
+
         val shouldSpeak = speech != null && (
-            intersectionSpeech != null || curbSpeech != null || (command == AssistCommand.CAMERA_ADJUST && shouldSpeak(state, changed, nowMillis))
+            curbSpeech != null || (command == AssistCommand.CAMERA_ADJUST && shouldSpeak(state, changed, nowMillis))
         )
-        if (shouldSpeak && intersectionSpeech == null) lastSpokenAt = nowMillis
+        if (shouldSpeak) lastSpokenAt = nowMillis
 
         // 장애물 관련(정지, 옆공간 등)은 진동으로만 알림
         val shouldVibrate = state != AssistState.NORMAL && shouldVibrate(state, changed, nowMillis)
@@ -141,11 +135,13 @@ class AssistEngine {
         if (awareness.frontReason.startsWith("guide range")) return AssistCommand.CAMERA_ADJUST
         if (confidence.confidence < 0.30f || awareness.frontStatus == FrontStatus.UNKNOWN) return AssistCommand.SYSTEM_UNSTABLE
         if (awareness.frontStatus == FrontStatus.CRITICAL) return AssistCommand.STOP
+        // 횡단보도 감지 시 전방을 walkable로 처리
+        val crosswalkDetected = awareness.trafficScene == TrafficSceneStatus.CROSSWALK ||
+                                awareness.trafficScene == TrafficSceneStatus.GREEN_LIGHT ||
+                                awareness.trafficScene == TrafficSceneStatus.RED_LIGHT
+        if (crosswalkDetected) return AssistCommand.KEEP
         if (awareness.frontStatus == FrontStatus.BLOCKED) return AssistCommand.FRONT_LIMIT
-        if (awareness.frontStatus == FrontStatus.CAUTION) {
-            return AssistCommand.FRONT_CAUTION
-        }
-        // DepthAnomaly 관련 조건 삭제
+        if (awareness.frontStatus == FrontStatus.CAUTION) return AssistCommand.FRONT_CAUTION
         return AssistCommand.KEEP
     }
 
@@ -307,34 +303,14 @@ class AssistEngine {
         ).joinToString(" / ")
     }
 
-    private fun intersectionSpeech(evidence: TrafficSceneEvidence, now: Long): String? {
-        val hasCrosswalk = evidence.status == TrafficSceneStatus.CROSSWALK ||
-                           evidence.status == TrafficSceneStatus.GREEN_LIGHT ||
-                           evidence.status == TrafficSceneStatus.RED_LIGHT
-        if (!hasCrosswalk) return null
-        if (now - lastIntersectionSpokenAt < INTERSECTION_SPEECH_COOLDOWN) return null
-
-        val prefix = when (evidence.intersectionContext) {
-            IntersectionContext.INTERSECTION -> "교차로 "
-            IntersectionContext.T_JUNCTION -> "삼거리 "
-            else -> ""
-        }
-
-        return when (evidence.status) {
-            TrafficSceneStatus.GREEN_LIGHT -> "${prefix}초록불이 켜졌습니다. 건너가도 좋습니다."
-            TrafficSceneStatus.RED_LIGHT   -> "${prefix}빨간불입니다. 잠시 기다려주세요."
-            else                           -> "${prefix}횡단보도 앞입니다. 신호를 확인 중입니다."
-        }
-    }
-
     private fun commandSpeech(command: AssistCommand): String? {
         return when (command) {
             AssistCommand.STOP -> "정지"
             AssistCommand.FRONT_LIMIT -> "전방 제한"
             AssistCommand.FRONT_CAUTION -> "정면 주의"
             AssistCommand.DEPTH_CAUTION -> "거리 이상 감지"
-            AssistCommand.CAMERA_ADJUST -> "카메라를 조금 아래로"
-            AssistCommand.SYSTEM_UNSTABLE -> "인식 불안정"
+            AssistCommand.CAMERA_ADJUST -> "카메라를 조금 아래로 내려주세요."
+            AssistCommand.SYSTEM_UNSTABLE -> "인식이 불안정합니다."
             AssistCommand.KEEP -> null
         }
     }

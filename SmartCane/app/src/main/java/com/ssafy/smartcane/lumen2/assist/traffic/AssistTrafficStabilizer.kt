@@ -56,7 +56,7 @@ internal class AssistTrafficStabilizer {
     }
 
     private fun sceneStatus(detections: List<TrafficDetection>): TrafficSceneStatus {
-        val hasCrosswalk = detections.any { it.label == TrafficDetectionLabel.CROSSWALK }
+        val hasCrosswalk = detections.any { it.label == TrafficDetectionLabel.CROSSWALK && it.confidence >= 0.6f }
         val hasGreen = detections.any { it.label == TrafficDetectionLabel.GREEN_LIGHT }
         val hasRed = detections.any { it.label == TrafficDetectionLabel.RED_LIGHT }
         return when {

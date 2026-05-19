@@ -12,6 +12,7 @@ data class NearestTrafficLight(
     val id: Long,
     val managementNumber: String?,
     val roadNameAddress: String?,
+    val roadRouteName: String?,
     val trafficLightType: Int?,
     val facingDirection: Double?,
     val lat: Double,
@@ -50,6 +51,7 @@ object TrafficLightApiService {
                             id = props.optLong("id"),
                             managementNumber = props.optString("managementNumber").takeIf { it.isNotEmpty() },
                             roadNameAddress = props.optString("roadNameAddress").takeIf { it.isNotEmpty() },
+                            roadRouteName = props.optString("roadRouteName").takeIf { it.isNotEmpty() },
                             trafficLightType = props.optInt("trafficLightType").takeIf { it != 0 },
                             facingDirection = if (props.isNull("facingDirection")) null
                                              else props.getDouble("facingDirection"),
