@@ -128,14 +128,14 @@ class AssistOverlayRenderer {
         isFakeBoldText = true
     }
 
-    fun render(width: Int, height: Int, decision: AssistDecision, topInsetPx: Float = 0f): Bitmap {
+    fun render(width: Int, height: Int, decision: AssistDecision, topInsetPx: Float = 0f, buttonRightPx: Float = 0f, buttonHeightPx: Float = 0f): Bitmap {
         val bitmap = reusableBitmap
             ?.takeIf { it.width == width && it.height == height }
             ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { reusableBitmap = it }
         bitmap.eraseColor(Color.TRANSPARENT)
         val canvas = Canvas(bitmap)
         drawGuidePathVisualization(canvas, decision)
-        val panelBottom = drawGuidancePanel(canvas, width, decision, topInsetPx)
+        val panelBottom = drawGuidancePanel(canvas, width, decision, topInsetPx, buttonRightPx, buttonHeightPx)
         drawSituationAlerts(canvas, width, panelBottom, decision)
         return bitmap
     }
@@ -176,36 +176,48 @@ class AssistOverlayRenderer {
         drawTrafficDetections(canvas, visualization)
     }
 
-    private fun drawGuidancePanel(canvas: Canvas, width: Int, decision: AssistDecision, topInsetPx: Float = 0f): Float {
+    private fun drawGuidancePanel(canvas: Canvas, width: Int, decision: AssistDecision, topInsetPx: Float = 0f, buttonRightPx: Float = 0f, buttonHeightPx: Float = 0f): Float {
+        val left = buttonRightPx + 12f
         val right = width - PANEL_RIGHT_MARGIN
-        val left = right - PANEL_WIDTH
         val top = topInsetPx
         val accentColor = colorForState(decision.state)
 
-        val badgeText = stateLabel(decision.state)
-        val badgePadH = 16f
-        val badgeH = badgeTextPaint.textSize + 20f
-        val badgeW = badgeTextPaint.measureText(badgeText) + badgePadH * 2
-
-        val panelPad = 14f
-        val panelH = panelPad + badgeH + 10f + PANEL_TITLE_TEXT_SIZE + panelPad
+        // 패널 높이 = 뒤로가기 버튼 높이에 맞춤 (최소 72px)
+        val panelH = buttonHeightPx.coerceAtLeast(72f)
         val panelBottom = top + panelH
+        val panelPad = panelH * 0.15f
+
+        // 텍스트 크기 = 버튼 높이 기반 (Material Button 비율과 동일)
+        val titleSize = (panelH * 0.42f).coerceIn(36f, 64f)
+        val badgeSize = (panelH * 0.26f).coerceIn(22f, 38f)
 
         panelBorderPaint.color = accentColor
         canvas.drawRoundRect(left, top, right, panelBottom, 20f, 20f, panelPaint)
         canvas.drawRoundRect(left, top, right, panelBottom, 20f, 20f, panelBorderPaint)
 
+        // 배지
+        val savedBadgeSize = badgeTextPaint.textSize
+        badgeTextPaint.textSize = badgeSize
+        val badgePadH = badgeSize * 0.6f
+        val badgeText = stateLabel(decision.state)
+        val badgeW = badgeTextPaint.measureText(badgeText) + badgePadH * 2
+        val badgeH = badgeSize + badgePadH
         val badgeLeft = left + panelPad
-        val badgeTop = top + panelPad
+        val badgeTop = top + (panelH - badgeH) / 2f
         val badgeBottom = badgeTop + badgeH
         badgePaint.color = accentColor
-        canvas.drawRoundRect(RectF(badgeLeft, badgeTop, badgeLeft + badgeW, badgeBottom), 12f, 12f, badgePaint)
-        canvas.drawText(badgeText, badgeLeft + badgePadH, badgeBottom - 7f, badgeTextPaint)
+        canvas.drawRoundRect(RectF(badgeLeft, badgeTop, badgeLeft + badgeW, badgeBottom), badgeH / 4f, badgeH / 4f, badgePaint)
+        canvas.drawText(badgeText, badgeLeft + badgePadH, badgeBottom - badgePadH * 0.35f, badgeTextPaint)
+        badgeTextPaint.textSize = savedBadgeSize
 
+        // 안내 텍스트
         val savedSize = titlePaint.textSize
-        titlePaint.textSize = PANEL_TITLE_TEXT_SIZE
+        titlePaint.textSize = titleSize
         titlePaint.color = accentColor
-        canvas.drawText(primaryGuidance(decision), left + panelPad, badgeBottom + 10f + PANEL_TITLE_TEXT_SIZE, titlePaint)
+        titlePaint.isFakeBoldText = true
+        val textX = badgeLeft + badgeW + panelPad
+        val textY = top + panelH / 2f + titleSize / 2f - titleSize * 0.1f
+        canvas.drawText(primaryGuidance(decision), textX, textY, titlePaint)
         titlePaint.textSize = savedSize
 
         return panelBottom
@@ -218,7 +230,7 @@ class AssistOverlayRenderer {
         )
         if (alerts.isEmpty()) return
         val right = width - PANEL_RIGHT_MARGIN
-        var top = panelBottom + 10f
+        var top = panelBottom + 8f
         alerts.forEach { alert ->
             val textWidth = bodyPaint.measureText(alert.text)
             val boxWidth = (textWidth + 36f).coerceAtLeast(160f).coerceAtMost(PANEL_WIDTH)

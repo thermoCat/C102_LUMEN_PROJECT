@@ -48,6 +48,8 @@ class SafetyWalkActivity : ComponentActivity() {
     @Volatile private var latestTrafficEvidence = TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList())
     @Volatile private var trafficBusy = false
     @Volatile private var topBarBottomPx: Float = 0f
+    @Volatile private var buttonRightPx: Float = 0f
+    @Volatile private var buttonHeightPx: Float = 0f
 
     private lateinit var bleNusManager: BleNusManager
     private lateinit var proximityController: ProximityVibrationController
@@ -110,6 +112,8 @@ class SafetyWalkActivity : ComponentActivity() {
                 arSurfaceView.getLocationInWindow(glWinLoc)
                 // 버튼 top Y를 GLSurfaceView(= 비트맵) 좌표계로 변환
                 topBarBottomPx = maxOf(0f, (btnWinLoc[1] - glWinLoc[1]).toFloat())
+                buttonRightPx = maxOf(0f, (btnWinLoc[0] + btnBack.width - glWinLoc[0]).toFloat())
+                buttonHeightPx = btnBack.height.toFloat()
                 topBar.viewTreeObserver.removeOnGlobalLayoutListener(this)
             }
         })
@@ -179,7 +183,7 @@ class SafetyWalkActivity : ComponentActivity() {
         assistFeedback.apply(decision)
         proximityController.update(decision)
 
-        val overlay = assistRenderer.render(frame.viewWidth, frame.viewHeight, decision, topBarBottomPx)
+        val overlay = assistRenderer.render(frame.viewWidth, frame.viewHeight, decision, topBarBottomPx, buttonRightPx, buttonHeightPx)
         runOnUiThread { overlayView.setImageBitmap(overlay) }
     }
 

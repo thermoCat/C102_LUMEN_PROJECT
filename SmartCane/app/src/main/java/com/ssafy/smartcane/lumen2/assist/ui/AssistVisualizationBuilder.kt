@@ -46,22 +46,17 @@ internal object AssistVisualizationBuilder {
         val evidence = semanticEvidence ?: return emptyList()
         val samples = evidence.semanticSamples()
         val tiles = mutableListOf<AssistTactileTile>()
+        val halfTile = TACTILE_TILE_SIZE_MM / 2f
         var nearForwardMm = AssistConfig.ANCHOR_FORWARD_MM
         while (nearForwardMm < AssistConfig.PLAN_DISTANCE_MM - 0.001f) {
             val farForwardMm = (nearForwardMm + TACTILE_TILE_SIZE_MM)
                 .coerceAtMost(AssistConfig.PLAN_DISTANCE_MM)
-            var leftMm = -AssistConfig.USER_HALF_WIDTH_MM
-            while (leftMm < AssistConfig.USER_HALF_WIDTH_MM - 0.001f) {
-                val rightMm = (leftMm + TACTILE_TILE_SIZE_MM)
-                    .coerceAtMost(AssistConfig.USER_HALF_WIDTH_MM)
-                val polygon = buildProjectedTile(frame, leftMm, rightMm, nearForwardMm, farForwardMm)
-                if (polygon.size == 4) {
-                    tiles += AssistTactileTile(
-                        displayPolygon = polygon,
-                        kind = classifyTile(polygon, samples)
-                    )
-                }
-                leftMm += TACTILE_TILE_SIZE_MM
+            val polygon = buildProjectedTile(frame, -halfTile, halfTile, nearForwardMm, farForwardMm)
+            if (polygon.size == 4) {
+                tiles += AssistTactileTile(
+                    displayPolygon = polygon,
+                    kind = classifyTile(polygon, samples)
+                )
             }
             nearForwardMm += TACTILE_TILE_SIZE_MM
         }
