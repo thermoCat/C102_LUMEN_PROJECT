@@ -16,9 +16,10 @@
         android:scaleType="fitCenter" />
 
     <LinearLayout
-        android:layout_width="match_parent"
+        android:id="@+id/topButtonBar"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top"
+        android:layout_gravity="top|start"
         android:orientation="horizontal"
         android:padding="12dp">
 
@@ -28,19 +29,6 @@
             android:layout_height="wrap_content"
             android:backgroundTint="#AA000000"
             android:text="@string/action_back"
-            android:textColor="#FFFFFF" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <Button
-            android:id="@+id/btnStop"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:backgroundTint="#AACC0000"
-            android:text="@string/action_stop"
             android:textColor="#FFFFFF" />
 
     </LinearLayout>

@@ -47,6 +47,9 @@ class SafetyWalkActivity : ComponentActivity() {
 
     @Volatile private var latestTrafficEvidence = TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList())
     @Volatile private var trafficBusy = false
+    @Volatile private var topBarBottomPx: Float = 0f
+    @Volatile private var buttonRightPx: Float = 0f
+    @Volatile private var buttonHeightPx: Float = 0f
 
     private lateinit var bleNusManager: BleNusManager
     private lateinit var proximityController: ProximityVibrationController
@@ -99,10 +102,21 @@ class SafetyWalkActivity : ComponentActivity() {
             finish()
         }
 
-        findViewById<android.view.View>(R.id.btnStop).setOnClickListener {
-            SafetyWalkService.stop(this)
-            finish()
-        }
+        val topBar = findViewById<android.view.View>(R.id.topButtonBar)
+        val btnBack = findViewById<android.view.View>(R.id.btnBack)
+        topBar.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                val btnWinLoc = IntArray(2)
+                btnBack.getLocationInWindow(btnWinLoc)
+                val glWinLoc = IntArray(2)
+                arSurfaceView.getLocationInWindow(glWinLoc)
+                // 버튼 top Y를 GLSurfaceView(= 비트맵) 좌표계로 변환
+                topBarBottomPx = maxOf(0f, (btnWinLoc[1] - glWinLoc[1]).toFloat())
+                buttonRightPx = maxOf(0f, (btnWinLoc[0] + btnBack.width - glWinLoc[0]).toFloat())
+                buttonHeightPx = btnBack.height.toFloat()
+                topBar.viewTreeObserver.removeOnGlobalLayoutListener(this)
+            }
+        })
 
         // ARCore 세션 충돌 방지: 서비스 실행 중이면 종료 (토글 상태는 유지됨)
         SafetyWalkService.stopForActivity(this)
@@ -169,7 +183,7 @@ class SafetyWalkActivity : ComponentActivity() {
         assistFeedback.apply(decision)
         proximityController.update(decision)
 
-        val overlay = assistRenderer.render(frame.viewWidth, frame.viewHeight, decision)
+        val overlay = assistRenderer.render(frame.viewWidth, frame.viewHeight, decision, topBarBottomPx, buttonRightPx, buttonHeightPx)
         runOnUiThread { overlayView.setImageBitmap(overlay) }
     }
 

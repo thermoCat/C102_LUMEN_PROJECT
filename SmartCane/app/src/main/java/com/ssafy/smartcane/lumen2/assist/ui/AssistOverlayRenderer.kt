@@ -12,6 +12,9 @@ import android.graphics.RectF
 class AssistOverlayRenderer {
     private companion object {
         private const val TACTILE_TEXTURE_SIZE = 256
+        private const val PANEL_RIGHT_MARGIN = 24f
+        private const val PANEL_WIDTH = 270f
+        private const val PANEL_TITLE_TEXT_SIZE = 38f
     }
 
     private var reusableBitmap: Bitmap? = null
@@ -125,14 +128,14 @@ class AssistOverlayRenderer {
         isFakeBoldText = true
     }
 
-    fun render(width: Int, height: Int, decision: AssistDecision): Bitmap {
+    fun render(width: Int, height: Int, decision: AssistDecision, topInsetPx: Float = 0f, buttonRightPx: Float = 0f, buttonHeightPx: Float = 0f): Bitmap {
         val bitmap = reusableBitmap
             ?.takeIf { it.width == width && it.height == height }
             ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { reusableBitmap = it }
         bitmap.eraseColor(Color.TRANSPARENT)
         val canvas = Canvas(bitmap)
         drawGuidePathVisualization(canvas, decision)
-        val panelBottom = drawGuidancePanel(canvas, width, decision)
+        val panelBottom = drawGuidancePanel(canvas, width, decision, topInsetPx, buttonRightPx, buttonHeightPx)
         drawSituationAlerts(canvas, width, panelBottom, decision)
         return bitmap
     }
@@ -173,34 +176,50 @@ class AssistOverlayRenderer {
         drawTrafficDetections(canvas, visualization)
     }
 
-    private fun drawGuidancePanel(canvas: Canvas, width: Int, decision: AssistDecision): Float {
-        val left = 24f
-        val top = 24f
-        val right = minOf(width * 0.9f, left + 900f)
-        val panelWidth = right - left
-        val panelBottom = top + 280f
+    private fun drawGuidancePanel(canvas: Canvas, width: Int, decision: AssistDecision, topInsetPx: Float = 0f, buttonRightPx: Float = 0f, buttonHeightPx: Float = 0f): Float {
+        val left = buttonRightPx + 12f
+        val right = width - PANEL_RIGHT_MARGIN
+        val top = topInsetPx
         val accentColor = colorForState(decision.state)
+
+        // 패널 높이 = 뒤로가기 버튼 높이에 맞춤 (최소 72px)
+        val panelH = buttonHeightPx.coerceAtLeast(72f)
+        val panelBottom = top + panelH
+        val panelPad = panelH * 0.15f
+
+        // 텍스트 크기 = 버튼 높이 기반 (Material Button 비율과 동일)
+        val titleSize = (panelH * 0.42f).coerceIn(36f, 64f)
+        val badgeSize = (panelH * 0.26f).coerceIn(22f, 38f)
+
         panelBorderPaint.color = accentColor
-        canvas.drawRoundRect(left, top, right, panelBottom, 30f, 30f, panelPaint)
-        canvas.drawRoundRect(left, top, right, panelBottom, 30f, 30f, panelBorderPaint)
+        canvas.drawRoundRect(left, top, right, panelBottom, 20f, 20f, panelPaint)
+        canvas.drawRoundRect(left, top, right, panelBottom, 20f, 20f, panelBorderPaint)
 
+        // 배지
+        val savedBadgeSize = badgeTextPaint.textSize
+        badgeTextPaint.textSize = badgeSize
+        val badgePadH = badgeSize * 0.6f
         val badgeText = stateLabel(decision.state)
-        val badgeLeft = left + 24f
-        val badgeTop = top + 22f
-        val badgeWidth = badgeTextPaint.measureText(badgeText) + 36f
-        val badgeBottom = badgeTop + 42f
+        val badgeW = badgeTextPaint.measureText(badgeText) + badgePadH * 2
+        val badgeH = badgeSize + badgePadH
+        val badgeLeft = left + panelPad
+        val badgeTop = top + (panelH - badgeH) / 2f
+        val badgeBottom = badgeTop + badgeH
         badgePaint.color = accentColor
-        canvas.drawRoundRect(
-            RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeBottom),
-            18f,
-            18f,
-            badgePaint
-        )
-        canvas.drawText(badgeText, badgeLeft + 18f, badgeBottom - 11f, badgeTextPaint)
+        canvas.drawRoundRect(RectF(badgeLeft, badgeTop, badgeLeft + badgeW, badgeBottom), badgeH / 4f, badgeH / 4f, badgePaint)
+        canvas.drawText(badgeText, badgeLeft + badgePadH, badgeBottom - badgePadH * 0.35f, badgeTextPaint)
+        badgeTextPaint.textSize = savedBadgeSize
 
-        var contentY = badgeBottom + 34f
+        // 안내 텍스트
+        val savedSize = titlePaint.textSize
+        titlePaint.textSize = titleSize
         titlePaint.color = accentColor
-        contentY = drawWrappedText(canvas, primaryGuidance(decision), left + 24f, contentY, panelWidth - 48f, titlePaint, 14f, 2)
+        titlePaint.isFakeBoldText = true
+        val textX = badgeLeft + badgeW + panelPad
+        val textY = top + panelH / 2f + titleSize / 2f - titleSize * 0.1f
+        canvas.drawText(primaryGuidance(decision), textX, textY, titlePaint)
+        titlePaint.textSize = savedSize
+
         return panelBottom
     }
 
@@ -210,19 +229,19 @@ class AssistOverlayRenderer {
             trafficAlert(decision)
         )
         if (alerts.isEmpty()) return
-        val left = 24f
-        val right = minOf(width * 0.9f, left + 900f)
-        var top = panelBottom + 12f
+        val right = width - PANEL_RIGHT_MARGIN
+        var top = panelBottom + 8f
         alerts.forEach { alert ->
             val textWidth = bodyPaint.measureText(alert.text)
-            val boxWidth = (textWidth + 42f).coerceAtLeast(260f).coerceAtMost(right - left)
-            val bottom = top + 58f
+            val boxWidth = (textWidth + 36f).coerceAtLeast(160f).coerceAtMost(PANEL_WIDTH)
+            val left = right - boxWidth
+            val bottom = top + 50f
             badgePaint.color = alert.color
-            canvas.drawRoundRect(left, top, left + boxWidth, bottom, 18f, 18f, trafficLabelBgPaint)
-            canvas.drawRoundRect(left, top, left + boxWidth, bottom, 18f, 18f, badgePaint)
+            canvas.drawRoundRect(left, top, right, bottom, 14f, 14f, trafficLabelBgPaint)
+            canvas.drawRoundRect(left, top, right, bottom, 14f, 14f, badgePaint)
             bodyPaint.color = Color.WHITE
-            canvas.drawText(alert.text, left + 18f, bottom - 18f, bodyPaint)
-            top = bottom + 10f
+            canvas.drawText(alert.text, left + 14f, bottom - 14f, bodyPaint)
+            top = bottom + 8f
         }
         bodyPaint.color = Color.argb(235, 244, 247, 250)
     }
