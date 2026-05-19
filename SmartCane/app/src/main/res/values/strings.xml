@@ -2,4 +2,25 @@
     <string name="app_name">SmartCane</string>
     <string name="action_back">Back</string>
     <string name="action_stop">Stop</string>
+    <string name="segformer_title">SegFormer+SLAM</string>
+    <string name="status_loading_model">Loading on-device model...</string>
+    <string name="status_camera_ready">Camera ready</string>
+    <string name="status_error">Pipeline error</string>
+    <string name="status_permission_required">Camera permission required</string>
+    <string name="status_segmentation_perf_template">%1$s | inf %2$d ms (%3$.1f FPS) | out %4$.1f FPS</string>
+    <string name="detail_initializing">Preparing LiteRT runtime, camera, and SegFormer segmentation.</string>
+    <string name="detail_waiting_for_frame">Waiting for the first analyzed frame.</string>
+    <string name="detail_no_foreground">background only</string>
+    <string name="detail_segmentation_perf_template">%1$s | last pipeline %2$d ms | avg pipeline %3$.1f ms</string>
+    <string name="detail_permission_required">Grant camera permission and reopen the app.</string>
+    <string name="class_unknown">unknown</string>
+    <string name="nav_orientation_pending">orientation pending</string>
+    <string name="nav_intrinsics_pending">camera intrinsics unavailable</string>
+    <string name="nav_no_ground_classes">no ground projection</string>
+    <string name="nav_entry_template">%1$s %2$.2f m %3$s</string>
+    <string name="nav_lateral_left">L %1$.2f</string>
+    <string name="nav_lateral_right">R %1$.2f</string>
+    <string name="nav_summary_template">%1$s | h=%2$.2f m</string>
+    <string name="nav_virtual_braille_world">W</string>
+    <string name="nav_virtual_braille_guide_template">AR braille %1$s %2$.2f-%3$.2f m A %4$d</string>
 </resources>

@@ -9,6 +9,8 @@
     <!-- Camera -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <!-- ARCore (안전보행 테스트 — depth/semantics) -->
     <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
@@ -65,6 +67,21 @@
             android:label="안전보행"
             android:theme="@style/Theme.SmartCane"
             android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".segformer.SegFormerActivity"
+            android:exported="true"
+            android:label="@string/segformer_title"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SmartCane">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter_uvc" />
+        </activity>
 
         <service
             android:name=".lumen2.SafetyWalkService"

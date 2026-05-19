@@ -56,9 +56,15 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        viewBinding = true
     }
     androidResources {
         noCompress.add("tflite")
+    }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
     }
 
 }
@@ -97,8 +103,18 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    // TensorFlow Lite
-    implementation(libs.tensorflow.lite)
+    // LiteRT includes the org.tensorflow.lite Interpreter API used by the legacy YOLO path.
+    implementation("com.google.ai.edge.litert:litert:2.1.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+    implementation("com.github.jiangdongguo.AndroidUSBCamera:libausbc:3.2.7") {
+        isTransitive = false
+    }
+    implementation("com.github.jiangdongguo.AndroidUSBCamera:libnative:3.2.7") {
+        isTransitive = false
+    }
+    implementation(files("libs/libuvc-3.2.7-android14.aar"))
+    implementation("com.elvishew:xlog:1.11.0")
+    implementation("com.google.android.material:material:1.12.0")
     // ARCore (depth + semantics) — Lumen2 안전보행 모듈에서 사용
     implementation(libs.arcore)
     testImplementation(libs.junit)
