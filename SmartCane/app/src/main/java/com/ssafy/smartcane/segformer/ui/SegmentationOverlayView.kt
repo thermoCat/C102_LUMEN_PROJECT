@@ -10,6 +10,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
+import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.segformer.model.BrailleTilePattern
 import com.ssafy.smartcane.segformer.model.LetterboxInfo
 import com.ssafy.smartcane.segformer.model.SourcePoint
@@ -28,10 +29,25 @@ class SegmentationOverlayView @JvmOverloads constructor(
     private var sourceHeight: Int = 0
     private var letterbox: LetterboxInfo? = null
     private var virtualBrailleGuide: VirtualBrailleGuide? = null
+    private var yoloDetections: List<TFLiteRunner.Result> = emptyList()
 
     private val sourceRect = Rect()
     private val destinationRect = RectF()
     private val overlayPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val yoloBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 5f
+    }
+    private val yoloLabelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val yoloLabelTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 36f
+        isFakeBoldText = true
+    }
+    private val yoloLabelTextBounds = Rect()
+    private val yoloLabelRect = RectF()
     private val guidePath = Path()
     private val guideFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(180, 209, 167, 39)
@@ -74,6 +90,15 @@ class SegmentationOverlayView @JvmOverloads constructor(
         postInvalidateOnAnimation()
     }
 
+    /**
+     * YOLO 탐지 결과 갱신. 좌표는 normalized(0~1) — onDraw 에서
+     * SegFormer 프리뷰 영역(destinationRect)에 맞춰 그린다.
+     */
+    fun setYoloDetections(detections: List<TFLiteRunner.Result>) {
+        this.yoloDetections = detections
+        postInvalidateOnAnimation()
+    }
+
     override fun onDetachedFromWindow() {
         maskBitmap?.recycle()
         maskBitmap = null
@@ -110,6 +135,57 @@ class SegmentationOverlayView @JvmOverloads constructor(
         )
         canvas.drawBitmap(bitmap, sourceRect, destinationRect, overlayPaint)
         drawVirtualBrailleGuide(canvas, virtualBrailleGuide, previewScale, offsetX, offsetY)
+        drawYoloDetections(canvas, destinationRect)
+    }
+
+    /**
+     * YOLO normalized 좌표(0~1) 를 SegFormer 프리뷰 destinationRect 영역으로 매핑하여
+     * bbox + 라벨을 그린다. 라벨별 색상 매핑은 [colorForYoloLabel] 참조.
+     */
+    private fun drawYoloDetections(canvas: Canvas, dst: RectF) {
+        if (yoloDetections.isEmpty()) return
+        if (dst.width() <= 0f || dst.height() <= 0f) return
+        for (d in yoloDetections) {
+            val left = dst.left + d.x1 * dst.width()
+            val top = dst.top + d.y1 * dst.height()
+            val right = dst.left + d.x2 * dst.width()
+            val bottom = dst.top + d.y2 * dst.height()
+            if (right <= left || bottom <= top) continue
+            val color = colorForYoloLabel(d.label)
+            yoloBoxPaint.color = color
+            canvas.drawRect(left, top, right, bottom, yoloBoxPaint)
+
+            // 라벨 + confidence 텍스트
+            val text = "${d.label} ${(d.confidence * 100).toInt()}%"
+            yoloLabelTextPaint.getTextBounds(text, 0, text.length, yoloLabelTextBounds)
+            val padding = 6f
+            val labelHeight = yoloLabelTextBounds.height().toFloat() + padding * 2f
+            val labelWidth = yoloLabelTextBounds.width().toFloat() + padding * 2f
+            val labelTop = max(dst.top, top - labelHeight)
+            val labelBottom = labelTop + labelHeight
+            val labelLeft = left
+            val labelRight = min(dst.right, labelLeft + labelWidth)
+            yoloLabelRect.set(labelLeft, labelTop, labelRight, labelBottom)
+            // 박스 색상에 알파 적용한 배경
+            yoloLabelBgPaint.color = (color and 0x00FFFFFF) or (0xCC shl 24)
+            canvas.drawRect(yoloLabelRect, yoloLabelBgPaint)
+            canvas.drawText(
+                text,
+                labelLeft + padding,
+                labelBottom - padding,
+                yoloLabelTextPaint,
+            )
+        }
+    }
+
+    private fun colorForYoloLabel(label: String): Int {
+        return when (label) {
+            "crosswalk" -> Color.rgb(0, 200, 255)           // 시안: 횡단보도
+            "red_pedestrian_light" -> Color.rgb(255, 60, 60)  // 빨강: 정지 신호
+            "green_pedestrian_light" -> Color.rgb(80, 220, 80)  // 초록: 통행 가능
+            "pedestrian_traffic_light" -> Color.rgb(255, 200, 0)  // 노랑: 신호등 본체
+            else -> Color.rgb(255, 140, 0)                     // 주황: 기타
+        }
     }
 
     private fun drawVirtualBrailleGuide(

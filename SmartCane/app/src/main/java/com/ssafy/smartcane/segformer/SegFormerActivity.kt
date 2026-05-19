@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
@@ -20,6 +21,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.SmartCaneApplication
+import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.segformer.ble.SegFormerProximityController
 import com.ssafy.smartcane.segformer.camera.CameraController
 import com.ssafy.smartcane.segformer.camera.UvcCameraController
@@ -36,6 +38,7 @@ import com.ssafy.smartcane.segformer.util.FpsStatsTracker
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
 class SegFormerActivity : ComponentActivity() {
@@ -49,6 +52,12 @@ class SegFormerActivity : ComponentActivity() {
     private var orientationProvider: OrientationProvider? = null
     private var worldPoseProvider: WorldPoseProvider? = null
     private var proximityController: SegFormerProximityController? = null
+
+    // YOLO 병렬 추론용
+    private var yoloRunner: TFLiteRunner? = null
+    private var yoloExecutor: ExecutorService? = null
+    private val yoloBusy = AtomicBoolean(false)
+    @Volatile private var latestYoloDetections: List<TFLiteRunner.Result> = emptyList()
 
     /** Persistent diagnostic line ??survives inference status overwrites. */
     private var cameraDiagnostic: String = ""
@@ -95,6 +104,12 @@ class SegFormerActivity : ComponentActivity() {
             send = { cmd -> bleNusManager.sendCommand(cmd) }
         )
 
+        // YOLO 병렬 파이프라인 초기화 — assets 없으면 비활성으로 동작
+        yoloExecutor = Executors.newSingleThreadExecutor()
+        yoloRunner = runCatching { TFLiteRunner(applicationContext) }
+            .onFailure { Log.w(TAG, "YOLO TFLiteRunner 초기화 실패 — YOLO 비활성", it) }
+            .getOrNull()
+
         if (hasCameraPermission()) {
             initializeDetectorAndCamera()
         } else {
@@ -122,6 +137,8 @@ class SegFormerActivity : ComponentActivity() {
         orientationProvider?.stop()
         worldPoseProvider?.stop()
         proximityController?.reset()
+        latestYoloDetections = emptyList()
+        runOnUiThread { binding.overlayView.setYoloDetections(emptyList()) }
         runCatching { unregisterReceiver(usbAttachReceiver) }
         super.onStop()
     }
@@ -142,6 +159,18 @@ class SegFormerActivity : ComponentActivity() {
         segmenter?.close()
         proximityController?.reset()
         proximityController = null
+        // YOLO 정리 — 추론 완료 후 close (native 크래시 방지)
+        val yoloExec = yoloExecutor
+        val runner = yoloRunner
+        yoloExecutor = null
+        yoloRunner = null
+        latestYoloDetections = emptyList()
+        if (runner != null && yoloExec != null && !yoloExec.isShutdown) {
+            yoloExec.execute { runCatching { runner.close() } }
+        } else {
+            runCatching { runner?.close() }
+        }
+        yoloExec?.shutdown()
         analyzerExecutor.shutdown()
         super.onDestroy()
     }
@@ -275,6 +304,7 @@ class SegFormerActivity : ComponentActivity() {
                         targetVendorId = detection.device?.vendorId,
                         targetProductId = detection.device?.productId,
                         targetDeviceName = detection.device?.productName ?: detection.device?.deviceName,
+                        onBitmap = ::scheduleYoloAnalysis,
                     )
                 } else {
                     CameraController(
@@ -290,6 +320,7 @@ class SegFormerActivity : ComponentActivity() {
                                 binding.detailText.text = cameraDiagnostic
                             }
                         },
+                        onBitmap = ::scheduleYoloAnalysis,
                     ) to null
                 }
 
@@ -320,8 +351,39 @@ class SegFormerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 카메라 컨트롤러가 매 프레임 전달하는 ARGB_8888 Bitmap 을 받아 YOLO 추론을
+     * 단일 스레드 executor 로 분기한다. busy 가드로 프레임 적체를 방지하고,
+     * 결과는 @Volatile latestYoloDetections 에 게시한 뒤 입력 Bitmap 은 recycle.
+     */
+    private fun scheduleYoloAnalysis(bitmap: Bitmap) {
+        val runner = yoloRunner
+        val executor = yoloExecutor
+        if (runner == null || executor == null || executor.isShutdown) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return
+        }
+        if (!yoloBusy.compareAndSet(false, true)) {
+            // 이전 추론이 아직 진행 중 → 이번 프레임은 드롭
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return
+        }
+        executor.execute {
+            try {
+                latestYoloDetections = runner.detectAll(bitmap)
+            } catch (t: Throwable) {
+                Log.w(TAG, "YOLO 추론 실패", t)
+                latestYoloDetections = emptyList()
+            } finally {
+                if (!bitmap.isRecycled) bitmap.recycle()
+                yoloBusy.set(false)
+            }
+        }
+    }
+
     private fun handleInferenceResult(result: SegmentationResult) {
-        proximityController?.update(result)
+        val yolo = latestYoloDetections
+        proximityController?.update(result, yolo)
         runOnUiThread {
             val stats = fpsStatsTracker.record(
                 inferenceTimeMs = result.inferenceTimeMs,
@@ -338,6 +400,7 @@ class SegFormerActivity : ComponentActivity() {
                 letterbox = result.letterbox,
                 virtualBrailleGuide = result.groundProjection?.virtualBrailleGuide,
             )
+            binding.overlayView.setYoloDetections(yolo)
             binding.statusText.text = getString(
                 R.string.status_segmentation_perf_template,
                 result.classNames.getOrElse(result.dominantClassIndex) { getString(R.string.class_unknown) },
@@ -355,11 +418,19 @@ class SegFormerActivity : ComponentActivity() {
             val pixelTotal = result.classPixelCounts.sum()
             val nonBgPixels = result.classPixelCounts.drop(1).sum()
             val frameLine = "frame: ${result.sourceWidth}x${result.sourceHeight}, non-bg=$nonBgPixels/$pixelTotal"
+            val yoloLine = if (yolo.isEmpty()) {
+                "YOLO: none"
+            } else {
+                "YOLO: " + yolo.take(3).joinToString(", ") { d ->
+                    "%s %.0f%%".format(Locale.US, d.label, d.confidence * 100f)
+                }
+            }
             val parts = listOfNotNull(
                 cameraDiagnostic.takeIf { it.isNotEmpty() },
                 frameLine,
                 perfLine,
                 navLine,
+                yoloLine,
             )
             binding.detailText.text = parts.joinToString("\n")
         }
