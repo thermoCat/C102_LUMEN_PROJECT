@@ -21,7 +21,11 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.SmartCaneApplication
+import com.ssafy.smartcane.crosswalk.CrosswalkPipeline
+import com.ssafy.smartcane.crosswalk.PhoneSpeechOutput
+import com.ssafy.smartcane.crosswalk.WatchSpeechOutput
 import com.ssafy.smartcane.detection.TFLiteRunner
+import com.ssafy.smartcane.lumen2.assist.AssistFeedbackController
 import com.ssafy.smartcane.segformer.ble.SegFormerProximityController
 import com.ssafy.smartcane.segformer.camera.CameraController
 import com.ssafy.smartcane.segformer.camera.UvcCameraController
@@ -58,6 +62,10 @@ class SegFormerActivity : ComponentActivity() {
     private var yoloExecutor: ExecutorService? = null
     private val yoloBusy = AtomicBoolean(false)
     @Volatile private var latestYoloDetections: List<TFLiteRunner.Result> = emptyList()
+
+    // 횡단보도 파이프라인
+    private lateinit var assistFeedback: AssistFeedbackController
+    private lateinit var crosswalkPipeline: CrosswalkPipeline
 
     /** Persistent diagnostic line ??survives inference status overwrites. */
     private var cameraDiagnostic: String = ""
@@ -102,6 +110,16 @@ class SegFormerActivity : ComponentActivity() {
         val bleNusManager = (application as SmartCaneApplication).bleNusManager
         proximityController = SegFormerProximityController(
             send = { cmd -> bleNusManager.sendCommand(cmd) }
+        )
+
+        // 횡단보도 파이프라인 초기화
+        assistFeedback = AssistFeedbackController(this)
+        val phoneSpeech = PhoneSpeechOutput(assistFeedback)
+        val speechOutput = WatchSpeechOutput(context = this, fallback = phoneSpeech)
+        crosswalkPipeline = CrosswalkPipeline(
+            context = this,
+            bleNusManager = bleNusManager,
+            speechOutput = speechOutput
         )
 
         // YOLO 병렬 파이프라인 초기화 — assets 없으면 비활성으로 동작
@@ -172,6 +190,8 @@ class SegFormerActivity : ComponentActivity() {
         }
         yoloExec?.shutdown()
         analyzerExecutor.shutdown()
+        crosswalkPipeline.destroy()
+        assistFeedback.shutdown()
         super.onDestroy()
     }
 
@@ -370,7 +390,9 @@ class SegFormerActivity : ComponentActivity() {
         }
         executor.execute {
             try {
-                latestYoloDetections = runner.detectAll(bitmap)
+                val results = runner.detectAll(bitmap)
+                latestYoloDetections = results
+                triggerCrosswalkPipeline(results)
             } catch (t: Throwable) {
                 Log.w(TAG, "YOLO 추론 실패", t)
                 latestYoloDetections = emptyList()
@@ -378,6 +400,18 @@ class SegFormerActivity : ComponentActivity() {
                 if (!bitmap.isRecycled) bitmap.recycle()
                 yoloBusy.set(false)
             }
+        }
+    }
+
+    private fun triggerCrosswalkPipeline(results: List<TFLiteRunner.Result>) {
+        val crosswalk = results.filter { it.label == "crosswalk" }.maxByOrNull { it.confidence }
+        val green     = results.filter { it.label == "green_light" }.maxByOrNull { it.confidence }
+        val red       = results.filter { it.label == "red_light" }.maxByOrNull { it.confidence }
+
+        when {
+            green != null  -> crosswalkPipeline.onSignalDetected(green = true)
+            red != null    -> crosswalkPipeline.onSignalDetected(green = false)
+            crosswalk != null && crosswalk.confidence >= 0.6f -> crosswalkPipeline.onCrosswalkDetected()
         }
     }
 
