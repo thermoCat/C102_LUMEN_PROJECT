@@ -5,7 +5,6 @@ import android.media.MediaPlayer
 import android.util.Log
 import com.ssafy.smartcane.R
 import com.ssafy.smartcane.ble.BleNusManager
-import com.ssafy.smartcane.R
 import com.ssafy.smartcane.network.NearestTrafficLight
 import com.ssafy.smartcane.network.TrafficLightApiService
 import com.ssafy.smartcane.util.LocationHelper
@@ -217,30 +216,6 @@ class CrosswalkPipeline(
                 if (isGreen) playGreenSound() else stopGreenSound()
             }
         }
-    }
-
-    // ── 녹색 신호 음향 ────────────────────────────────────────────────────
-
-    private fun playGreenSound() {
-        stopGreenSound()
-        mediaPlayer = MediaPlayer.create(context, R.raw.pedestrian)?.apply {
-            isLooping = false
-            setOnCompletionListener {
-                scope.launch {
-                    delay(1000L)
-                    if (mediaPlayer != null) playGreenSound()
-                }
-            }
-            start()
-        }
-    }
-
-    private fun stopGreenSound() {
-        mediaPlayer?.apply {
-            if (isPlaying) stop()
-            release()
-        }
-        mediaPlayer = null
     }
 
     // ── GPS 수집 ──────────────────────────────────────────────────────────

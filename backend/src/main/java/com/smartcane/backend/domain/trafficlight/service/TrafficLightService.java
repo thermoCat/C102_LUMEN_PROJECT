@@ -28,6 +28,6 @@ public class TrafficLightService {
 
     @Transactional(readOnly = true)
     public List<TrafficLight> findNearest2(double lat, double lng) {
-        return trafficLightRepository.findNearest2(lat, lng, 10.0);
+        return trafficLightRepository.findNearest2(lat, lng, 100.0);
     }
 }

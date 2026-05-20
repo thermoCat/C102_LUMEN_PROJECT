@@ -67,10 +67,6 @@ class SegFormerActivity : ComponentActivity() {
     private val yoloBusy = AtomicBoolean(false)
     @Volatile private var latestYoloDetections: List<TFLiteRunner.Result> = emptyList()
 
-    // 횡단보도 파이프라인
-    private lateinit var assistFeedback: AssistFeedbackController
-    private lateinit var crosswalkPipeline: CrosswalkPipeline
-
     /** Persistent diagnostic line ??survives inference status overwrites. */
     private var cameraDiagnostic: String = ""
 
