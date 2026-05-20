@@ -432,7 +432,7 @@ class SegFormerActivity : ComponentActivity() {
                 sourceWidth = result.sourceWidth,
                 sourceHeight = result.sourceHeight,
                 letterbox = result.letterbox,
-                virtualBrailleGuide = result.groundProjection?.virtualBrailleGuide,
+                virtualBrailleGuide = null, // 가상 점자블록 비활성화
             )
             binding.overlayView.setYoloDetections(yolo)
             binding.statusText.text = getString(

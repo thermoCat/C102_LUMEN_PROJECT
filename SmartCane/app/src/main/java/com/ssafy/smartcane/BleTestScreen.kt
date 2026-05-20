@@ -7,9 +7,11 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Looper
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -434,6 +436,88 @@ private fun ControlTab(
             Text(
                 text = if (isReporting) "신고 중..." else "현재 위치 위험구간 신고",
                 fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ── 횡단보도 음성 테스트 ──────────────────────────────
+        val tts = remember {
+            var instance: TextToSpeech? = null
+            instance = TextToSpeech(context) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    instance?.language = java.util.Locale.KOREAN
+                    instance?.setSpeechRate(1.08f)
+                }
+            }
+            instance
+        }
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            onDispose { tts?.shutdown() }
+        }
+
+        var isMp3Playing by remember { mutableStateOf(false) }
+        val mp = remember {
+            MediaPlayer.create(context, R.raw.pedestrian)?.apply { isLooping = true }
+        }
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            onDispose { mp?.apply { if (isPlaying) stop(); release() } }
+        }
+
+        SectionLabel("횡단보도 음성 테스트")
+        Button(
+            onClick = { tts?.speak("에스오일방면 횡단보도입니다", TextToSpeech.QUEUE_FLUSH, null, null) },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("S오일방면 횡단보도입니다", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { tts?.speak("녹색 신호입니다. 건너세요.", TextToSpeech.QUEUE_FLUSH, null, null) },
+                modifier = Modifier.weight(1f).height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF388E3C)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("녹색 신호\n건너세요", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    color = AppWhite, textAlign = TextAlign.Center, lineHeight = 16.sp)
+            }
+            Button(
+                onClick = { tts?.speak("적색 신호입니다. 잠시만 기다려주세요.", TextToSpeech.QUEUE_FLUSH, null, null) },
+                modifier = Modifier.weight(1f).height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("적색 신호\n기다려주세요", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    color = AppWhite, textAlign = TextAlign.Center, lineHeight = 16.sp)
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Button(
+            onClick = {
+                if (isMp3Playing) {
+                    mp?.pause()
+                    isMp3Playing = false
+                } else {
+                    mp?.start()
+                    isMp3Playing = true
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isMp3Playing) Color(0xFF00897B) else Color(0xFF37474F)
+            ),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text(
+                text = if (isMp3Playing) "🔊 음향 재생 중 (탭하여 정지)" else "🔇 음향 재생 (루프)",
+                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AppWhite
             )
         }
 
