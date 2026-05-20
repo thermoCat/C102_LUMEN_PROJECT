@@ -230,10 +230,10 @@ class SafetyWalkActivity : ComponentActivity() {
     private fun List<TFLiteRunner.Result>.toTrafficEvidence(dstW: Int, dstH: Int): TrafficSceneEvidence {
         val detections = mapNotNull { r ->
             val label = when (r.label) {
-                "crosswalk"                  -> TrafficDetectionLabel.CROSSWALK
-                "green_pedestrian_light"     -> TrafficDetectionLabel.GREEN_LIGHT
-                "pedestrian_traffic_light"   -> TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT
-                "red_pedestrian_light"       -> TrafficDetectionLabel.RED_LIGHT
+                "crosswalk"                -> TrafficDetectionLabel.CROSSWALK
+                "green_light"              -> TrafficDetectionLabel.GREEN_LIGHT
+                "pedestrian_traffic_light" -> TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT
+                "red_light"                -> TrafficDetectionLabel.RED_LIGHT
                 else -> null
             } ?: return@mapNotNull null
             TrafficDetection(

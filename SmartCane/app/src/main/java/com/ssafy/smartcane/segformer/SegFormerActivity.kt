@@ -67,6 +67,10 @@ class SegFormerActivity : ComponentActivity() {
     private val yoloBusy = AtomicBoolean(false)
     @Volatile private var latestYoloDetections: List<TFLiteRunner.Result> = emptyList()
 
+    // 횡단보도 파이프라인
+    private lateinit var assistFeedback: AssistFeedbackController
+    private lateinit var crosswalkPipeline: CrosswalkPipeline
+
     /** Persistent diagnostic line ??survives inference status overwrites. */
     private var cameraDiagnostic: String = ""
 
@@ -405,12 +409,12 @@ class SegFormerActivity : ComponentActivity() {
 
     private fun triggerCrosswalkPipeline(results: List<TFLiteRunner.Result>) {
         val crosswalk = results.filter { it.label == "crosswalk" }.maxByOrNull { it.confidence }
-        val green     = results.filter { it.label == "green_pedestrian_light" }.maxByOrNull { it.confidence }
-        val red       = results.filter { it.label == "red_pedestrian_light" }.maxByOrNull { it.confidence }
+        val green     = results.filter { it.label == "green_light" }.maxByOrNull { it.confidence }
+        val red       = results.filter { it.label == "red_light" }.maxByOrNull { it.confidence }
 
         when {
-            green != null -> crosswalkPipeline.onSignalDetected(green = true)
-            red != null   -> crosswalkPipeline.onSignalDetected(green = false)
+            green != null  -> crosswalkPipeline.onSignalDetected(green = true)
+            red != null    -> crosswalkPipeline.onSignalDetected(green = false)
             crosswalk != null && crosswalk.confidence >= 0.6f -> crosswalkPipeline.onCrosswalkDetected()
         }
     }
