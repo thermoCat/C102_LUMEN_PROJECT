@@ -21,9 +21,10 @@ import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.lumen2.assist.AssistEngine
 import com.ssafy.smartcane.lumen2.assist.AssistFeedbackController
 import com.ssafy.smartcane.lumen2.assist.AssistOverlayRenderer
-import com.ssafy.smartcane.lumen2.assist.AssistTrafficDetector
 import com.ssafy.smartcane.intersection.IntersectionDetector
 import com.ssafy.smartcane.lumen2.assist.IntersectionContext
+import com.ssafy.smartcane.lumen2.assist.TrafficDetection
+import com.ssafy.smartcane.lumen2.assist.TrafficDetectionLabel
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneEvidence
 import com.ssafy.smartcane.lumen2.assist.TrafficSceneStatus
 import com.ssafy.smartcane.navigation.HeadingProvider
@@ -41,11 +42,12 @@ class SafetyWalkActivity : ComponentActivity() {
     private lateinit var assistEngine: AssistEngine
     private lateinit var assistRenderer: AssistOverlayRenderer
     private lateinit var assistFeedback: AssistFeedbackController
-    private var assistTrafficDetector: AssistTrafficDetector? = null
+    private var tfliteRunner: TFLiteRunner? = null
     private lateinit var trafficExecutor: ExecutorService
     private var frameSource: ArCoreFrameSource? = null
 
     @Volatile private var latestTrafficEvidence = TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList())
+    @Volatile private var latestRawDetections: List<TFLiteRunner.Result> = emptyList()
     @Volatile private var trafficBusy = false
     @Volatile private var topBarBottomPx: Float = 0f
     @Volatile private var buttonRightPx: Float = 0f
@@ -79,8 +81,8 @@ class SafetyWalkActivity : ComponentActivity() {
         assistRenderer = AssistOverlayRenderer()
         assistFeedback = AssistFeedbackController(this)
 
-        assistTrafficDetector = runCatching { AssistTrafficDetector(this) }
-            .onFailure { Log.w(TAG, "AssistTrafficDetector 비활성 (${TFLiteRunner.DEFAULT_MODEL_FILE_NAME} 없음)", it) }
+        tfliteRunner = runCatching { TFLiteRunner(this) }
+            .onFailure { Log.w(TAG, "TFLiteRunner 비활성 (${TFLiteRunner.DEFAULT_MODEL_FILE_NAME} 없음)", it) }
             .getOrNull()
         trafficExecutor = Executors.newSingleThreadExecutor()
 
@@ -110,7 +112,6 @@ class SafetyWalkActivity : ComponentActivity() {
                 btnBack.getLocationInWindow(btnWinLoc)
                 val glWinLoc = IntArray(2)
                 arSurfaceView.getLocationInWindow(glWinLoc)
-                // 버튼 top Y를 GLSurfaceView(= 비트맵) 좌표계로 변환
                 topBarBottomPx = maxOf(0f, (btnWinLoc[1] - glWinLoc[1]).toFloat())
                 buttonRightPx = maxOf(0f, (btnWinLoc[0] + btnBack.width - glWinLoc[0]).toFloat())
                 buttonHeightPx = btnBack.height.toFloat()
@@ -118,10 +119,8 @@ class SafetyWalkActivity : ComponentActivity() {
             }
         })
 
-        // ARCore 세션 충돌 방지: 서비스 실행 중이면 종료 (토글 상태는 유지됨)
         SafetyWalkService.stopForActivity(this)
 
-        // 1. Renderer 먼저 등록 (NPE 방지: 지연 없이 즉시 실행해야 함)
         frameSource = ArCoreFrameSource(
             activity    = this,
             surfaceView = arSurfaceView,
@@ -129,7 +128,6 @@ class SafetyWalkActivity : ComponentActivity() {
             onStatus    = { Log.d(TAG, "AR Status: $it") }
         ).also { it.setup() }
 
-        // 2. 실제 ARCore 세션 시작만 지연 처리 (서비스와의 충돌 방지)
         arSurfaceView.postDelayed({
             if (!isFinishing) {
                 if (hasCameraPermission()) startArCore()
@@ -141,7 +139,6 @@ class SafetyWalkActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         headingProvider.start()
-        // ARCore 세션은 onCreate에서 지연 시작하므로 여기서 즉시 resume하지 않음
     }
 
     override fun onPause() {
@@ -156,9 +153,8 @@ class SafetyWalkActivity : ComponentActivity() {
         proximityController.reset()
         frameSource?.close()
         trafficExecutor.shutdownNow()
-        assistTrafficDetector?.close()
+        tfliteRunner?.close()
         assistFeedback.shutdown()
-        // 카메라 해제 후 — 안전보행 토글이 켜져있으면 서비스 재시작
         SafetyWalkService.restartIfEnabled(this)
         super.onDestroy()
     }
@@ -183,35 +179,35 @@ class SafetyWalkActivity : ComponentActivity() {
         assistFeedback.apply(decision)
         proximityController.update(decision)
 
-        val overlay = assistRenderer.render(frame.viewWidth, frame.viewHeight, decision, topBarBottomPx, buttonRightPx, buttonHeightPx)
+        val overlay = assistRenderer.render(
+            frame.viewWidth, frame.viewHeight, decision,
+            topBarBottomPx, buttonRightPx, buttonHeightPx, latestRawDetections
+        )
         runOnUiThread { overlayView.setImageBitmap(overlay) }
     }
 
     private fun scheduleTrafficAnalysis(bitmap: Bitmap?, width: Int, height: Int) {
         bitmap ?: return
-        val detector = assistTrafficDetector ?: return
+        val runner = tfliteRunner ?: return
         if (trafficBusy || trafficExecutor.isShutdown) return
         trafficBusy = true
         trafficExecutor.execute {
             try {
-                val detected = detector.analyze(bitmap)
-                val scaled = detected.scaled(bitmap, width, height)
+                val raw = runner.detectAll(bitmap)
+                latestRawDetections = raw
+                val evidence = raw.toTrafficEvidence(width, height)
 
-                // 횡단보도/신호 감지 처리
                 val intersectionCtx = if (
-                    scaled.status == TrafficSceneStatus.CROSSWALK ||
-                    scaled.status == TrafficSceneStatus.GREEN_LIGHT ||
-                    scaled.status == TrafficSceneStatus.RED_LIGHT
+                    evidence.status == TrafficSceneStatus.CROSSWALK ||
+                    evidence.status == TrafficSceneStatus.GREEN_LIGHT ||
+                    evidence.status == TrafficSceneStatus.RED_LIGHT
                 ) {
-                    when (scaled.status) {
-                        // 1단계: 횡단보도만 잡힘 → 위치 파악 + 방면 안내
-                        TrafficSceneStatus.CROSSWALK -> crosswalkPipeline.onCrosswalkDetected()
-                        // 2단계: 사용자가 방향 전환 후 신호등 바라볼 때 신호 상태 안내
+                    when (evidence.status) {
+                        TrafficSceneStatus.CROSSWALK   -> crosswalkPipeline.onCrosswalkDetected()
                         TrafficSceneStatus.GREEN_LIGHT -> crosswalkPipeline.onSignalDetected(green = true)
                         TrafficSceneStatus.RED_LIGHT   -> crosswalkPipeline.onSignalDetected(green = false)
                         else -> Unit
                     }
-
                     val loc = LocationHelper.getLastKnownLocation(this@SafetyWalkActivity)
                     if (loc != null) {
                         when (IntersectionDetector.nearbyNodeCount(loc.first, loc.second)) {
@@ -222,7 +218,7 @@ class SafetyWalkActivity : ComponentActivity() {
                     } else IntersectionContext.NONE
                 } else IntersectionContext.NONE
 
-                latestTrafficEvidence = scaled.copy(intersectionContext = intersectionCtx)
+                latestTrafficEvidence = evidence.copy(intersectionContext = intersectionCtx)
             } catch (_: Throwable) {
                 latestTrafficEvidence = TrafficSceneEvidence(TrafficSceneStatus.UNKNOWN, emptyList())
             } finally {
@@ -231,15 +227,34 @@ class SafetyWalkActivity : ComponentActivity() {
         }
     }
 
-    private fun TrafficSceneEvidence.scaled(src: Bitmap, dstW: Int, dstH: Int): TrafficSceneEvidence {
-        val sx = dstW.toFloat() / src.width.toFloat().coerceAtLeast(1f)
-        val sy = dstH.toFloat() / src.height.toFloat().coerceAtLeast(1f)
-        return copy(detections = detections.map { d ->
-            d.copy(
-                left = d.left * sx, top = d.top * sy,
-                right = d.right * sx, bottom = d.bottom * sy
+    private fun List<TFLiteRunner.Result>.toTrafficEvidence(dstW: Int, dstH: Int): TrafficSceneEvidence {
+        val detections = mapNotNull { r ->
+            val label = when (r.label) {
+                "crosswalk"                  -> TrafficDetectionLabel.CROSSWALK
+                "green_pedestrian_light"     -> TrafficDetectionLabel.GREEN_LIGHT
+                "pedestrian_traffic_light"   -> TrafficDetectionLabel.PEDESTRIAN_TRAFFIC_LIGHT
+                "red_pedestrian_light"       -> TrafficDetectionLabel.RED_LIGHT
+                else -> null
+            } ?: return@mapNotNull null
+            TrafficDetection(
+                label      = label,
+                confidence = r.confidence,
+                left       = r.x1 * dstW,
+                top        = r.y1 * dstH,
+                right      = r.x2 * dstW,
+                bottom     = r.y2 * dstH
             )
-        })
+        }
+        val hasCrosswalk = detections.any { it.label == TrafficDetectionLabel.CROSSWALK }
+        val hasGreen     = detections.any { it.label == TrafficDetectionLabel.GREEN_LIGHT }
+        val hasRed       = detections.any { it.label == TrafficDetectionLabel.RED_LIGHT }
+        val status = when {
+            hasCrosswalk && hasRed   -> TrafficSceneStatus.RED_LIGHT
+            hasCrosswalk && hasGreen -> TrafficSceneStatus.GREEN_LIGHT
+            hasCrosswalk             -> TrafficSceneStatus.CROSSWALK
+            else                     -> TrafficSceneStatus.CLEAR
+        }
+        return TrafficSceneEvidence(status, detections)
     }
 
     private fun Bitmap.toDisplayBitmap(portrait: Boolean): Bitmap {

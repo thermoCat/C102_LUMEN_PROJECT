@@ -1,7 +1,9 @@
 package com.ssafy.smartcane.crosswalk
 
 import android.content.Context
+import android.media.MediaPlayer
 import android.util.Log
+import com.ssafy.smartcane.R
 import com.ssafy.smartcane.ble.BleNusManager
 import com.ssafy.smartcane.network.NearestTrafficLight
 import com.ssafy.smartcane.network.TrafficLightApiService
@@ -12,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import kotlin.math.*
 
 class CrosswalkPipeline(
@@ -22,9 +25,17 @@ class CrosswalkPipeline(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Volatile var currentHeading: Float = 0f
-
     @Volatile private var isRunning = false
     private var lastTriggerMs = 0L
+
+    // 마지막으로 조회한 신호등 (onSignalDetected에서 타이밍 안내에 재사용)
+    @Volatile private var lastFetchedLight: NearestTrafficLight? = null
+
+    // 신호 전환 타이머
+    private var signalTimerJob: kotlinx.coroutines.Job? = null
+
+    // 녹색 신호 음향 재생
+    private var mediaPlayer: MediaPlayer? = null
 
     companion object {
         private const val TAG = "CrosswalkPipeline"
@@ -34,20 +45,26 @@ class CrosswalkPipeline(
         private const val GPS_OUTLIER_THRESHOLD_M = 15.0
     }
 
-    // 2단계: 처음 감지 or 신호 변경 시에만 1회 발화
     // 신호 상태 변경 시에만 발화
-
-    private var lastSignalState: Boolean? = null   // null=미감지, true=녹색, false=적색
+    private var lastSignalState: Boolean? = null
     private var lastSignalDetectedMs = 0L
-    private val SIGNAL_RESET_MS = 20_000L          // 20초간 신호 없으면 상태 초기화
+    private val SIGNAL_RESET_MS = 20_000L
 
     fun onSignalDetected(green: Boolean) {
         val now = System.currentTimeMillis()
         if (now - lastSignalDetectedMs > SIGNAL_RESET_MS) lastSignalState = null
         lastSignalDetectedMs = now
-        if (green == lastSignalState) return        // 같은 신호 → 발화 안 함
+        if (green == lastSignalState) return
         lastSignalState = green
-        val text = if (green) "녹색 신호입니다. 건너세요." else "적색 신호입니다. 기다리세요."
+
+        val light = lastFetchedLight
+        val timing = light?.let { calculateSignalInfo(it) }
+        val text = if (timing != null) {
+            if (green) "녹색 신호입니다. 약 ${timing.remainingSec}초 남았습니다."
+            else "적색 신호입니다. 약 ${timing.remainingSec}초 후 녹색으로 바뀝니다."
+        } else {
+            if (green) "녹색 신호입니다. 건너세요." else "적색 신호입니다. 기다리세요."
+        }
         speechOutput.speak(text)
     }
 
@@ -69,30 +86,141 @@ class CrosswalkPipeline(
     }
 
     fun destroy() {
+        signalTimerJob?.cancel()
+        stopGreenSound()
         scope.cancel()
     }
 
     private suspend fun runPipeline() {
-        // 1. GPS 수집 후 튀는값 제거
         val samples = collectGpsSamples()
         val stableLoc = removeOutliersAndAverage(samples) ?: run {
             Log.w(TAG, "안정적인 GPS 위치를 얻을 수 없습니다")
             return
         }
 
-        // 2. 가장 가까운 신호등 1개 조회 (10m 이내)
         val lights = TrafficLightApiService.fetchNearest(stableLoc.first, stableLoc.second)
         if (lights.isEmpty()) {
             Log.d(TAG, "10m 이내 신호등 없음")
             return
         }
 
-        // 3. 도로명 주소 안내
-        // 3. road_route_name 기반 음성 안내
-        val guidance = buildGuidanceFromAddress(lights)
+        val light = lights.firstOrNull()
+        lastFetchedLight = light
+
+        val guidance = buildGuidance(light)
         speechOutput.speak(guidance)
         Log.d(TAG, "음성 안내: $guidance")
+
+        // 타이밍 데이터 있으면 신호 전환 자동 알림 스케줄
+        val timing = light?.let { calculateSignalInfo(it) }
+        if (light != null && timing != null) {
+            if (timing.isGreen) playGreenSound() else stopGreenSound()
+            scheduleSignalAlerts(light, timing)
+        }
     }
+
+    private fun buildGuidance(light: NearestTrafficLight?): String {
+        val routeName = light?.roadRouteName
+        val timing = light?.let { calculateSignalInfo(it) }
+
+        val prefix = if (!routeName.isNullOrBlank()) "${routeName} 횡단보도입니다." else "근처에 횡단보도가 있습니다."
+
+        return if (timing != null) {
+            val signalText = if (timing.isGreen) {
+                "현재 녹색 신호입니다. 약 ${timing.remainingSec}초 남았습니다."
+            } else {
+                "현재 적색 신호입니다. 약 ${timing.remainingSec}초 후 녹색으로 바뀝니다."
+            }
+            "$prefix $signalText"
+        } else {
+            prefix
+        }
+    }
+
+    // 신호 타이밍 계산: lighting_sequence = "적색초|HH:MM:SS"
+    private fun calculateSignalInfo(light: NearestTrafficLight): SignalInfo? {
+        val greenSec = light.lightingDuration ?: return null
+        val sequence = light.lightingSequence ?: return null
+
+        val parts = sequence.split("|")
+        if (parts.size != 2) return null
+        val redSec = parts[0].toIntOrNull() ?: return null
+        val timeParts = parts[1].split(":")
+        if (timeParts.size != 3) return null
+
+        val refH = timeParts[0].toIntOrNull() ?: return null
+        val refM = timeParts[1].toIntOrNull() ?: return null
+        val refS = timeParts[2].toIntOrNull() ?: return null
+        val refSecondsOfDay = refH * 3600 + refM * 60 + refS
+
+        val cal = Calendar.getInstance()
+        val nowSecondsOfDay = cal.get(Calendar.HOUR_OF_DAY) * 3600 +
+                              cal.get(Calendar.MINUTE) * 60 +
+                              cal.get(Calendar.SECOND)
+
+        val cycle = greenSec + redSec
+        val elapsed = ((nowSecondsOfDay - refSecondsOfDay) % cycle + cycle) % cycle
+
+        return if (elapsed < greenSec) {
+            SignalInfo(isGreen = true, remainingSec = greenSec - elapsed)
+        } else {
+            SignalInfo(isGreen = false, remainingSec = cycle - elapsed)
+        }
+    }
+
+    private data class SignalInfo(val isGreen: Boolean, val remainingSec: Int)
+
+    // 잔여시간 후 신호 전환 알림 → 이후 계속 사이클 반복
+    private fun scheduleSignalAlerts(light: NearestTrafficLight, timing: SignalInfo) {
+        signalTimerJob?.cancel()
+        val greenSec = light.lightingDuration ?: return
+        val parts = light.lightingSequence?.split("|") ?: return
+        val redSec = parts[0].toIntOrNull() ?: return
+
+        signalTimerJob = scope.launch {
+            var isGreen = timing.isGreen
+            var remaining = timing.remainingSec
+
+            while (true) {
+                delay(remaining * 1000L)
+                isGreen = !isGreen
+                remaining = if (isGreen) greenSec else redSec
+                val text = if (isGreen) {
+                    "녹색 신호로 바뀌었습니다. 약 ${greenSec}초입니다."
+                } else {
+                    "적색 신호로 바뀌었습니다. 약 ${redSec}초 기다려주세요."
+                }
+                speechOutput.speak(text)
+                if (isGreen) playGreenSound() else stopGreenSound()
+            }
+        }
+    }
+
+    // ── 녹색 신호 음향 ────────────────────────────────────────────────────
+
+    private fun playGreenSound() {
+        stopGreenSound()
+        mediaPlayer = MediaPlayer.create(context, R.raw.pedestrian)?.apply {
+            isLooping = false
+            setOnCompletionListener {
+                scope.launch {
+                    delay(1000L)
+                    if (mediaPlayer != null) playGreenSound()
+                }
+            }
+            start()
+        }
+    }
+
+    private fun stopGreenSound() {
+        mediaPlayer?.apply {
+            if (isPlaying) stop()
+            release()
+        }
+        mediaPlayer = null
+    }
+
+    // ── GPS 수집 ──────────────────────────────────────────────────────────
 
     private suspend fun collectGpsSamples(): List<Pair<Double, Double>> {
         val samples = mutableListOf<Pair<Double, Double>>()
@@ -116,72 +244,6 @@ class CrosswalkPipeline(
 
         return Pair(filtered.map { it.first }.average(), filtered.map { it.second }.average())
     }
-
-    // ── 가장 가까운 신호등 road_route_name 안내 ──────────────────────────
-    private fun buildGuidanceFromAddress(lights: List<NearestTrafficLight>): String {
-        val routeName = lights.firstOrNull()?.roadRouteName
-        return if (!routeName.isNullOrBlank()) {
-
-            "${routeName} 신호등입니다"
-        } else {
-            "근처에 신호등이 있습니다"
-        }
-    }
-
-    // ── 각도 기반 방위 안내 (비활성화) ───────────────────────────────────
-//    private fun buildGuidanceWithHeading(
-//        lights: List<NearestTrafficLight>,
-//        heading: Float
-//    ): String {
-//        if (lights.size == 1) {
-//            val light = lights[0]
-//            val dirName = facingDirectionToName(light.facingDirection)
-//            return "${dirName} 방면 신호등입니다"
-//        }
-//        val sorted = lights.sortedBy { angularDiff(heading.toDouble(), it.facingDirection ?: 999.0) }
-//        val primary = sorted[0]
-//        val secondary = sorted[1]
-//        val primaryDir = facingDirectionToName(primary.facingDirection)
-//        val secondaryDir = facingDirectionToName(secondary.facingDirection)
-//        val turnLabel = if (isLeftRelative(heading, secondary.facingDirection)) "좌회전" else "우회전"
-//        return "직진은 ${primaryDir} 방면, ${turnLabel} 시 ${secondaryDir} 방면 신호등입니다"
-//    }
-
-//    private fun buildGuidanceFromDb(lights: List<NearestTrafficLight>): String {
-//        return if (lights.size == 1) {
-//            "${facingDirectionToName(lights[0].facingDirection)} 방면 신호등입니다"
-//        } else {
-//            val dir1 = facingDirectionToName(lights[0].facingDirection)
-//            val dir2 = facingDirectionToName(lights[1].facingDirection)
-//            "${dir1} 방면 또는 ${dir2} 방면 신호등입니다"
-//        }
-//    }
-
-//    private fun facingDirectionToName(degrees: Double?): String {
-//        if (degrees == null) return "전방"
-//        val d = ((degrees % 360) + 360) % 360
-//        return when {
-//            d < 22.5 || d >= 337.5 -> "북쪽"
-//            d < 67.5  -> "북동쪽"
-//            d < 112.5 -> "동쪽"
-//            d < 157.5 -> "남동쪽"
-//            d < 202.5 -> "남쪽"
-//            d < 247.5 -> "남서쪽"
-//            d < 292.5 -> "서쪽"
-//            else      -> "북서쪽"
-//        }
-//    }
-
-//    private fun angularDiff(a: Double, b: Double): Double {
-//        val diff = abs(a - b) % 360
-//        return if (diff > 180) 360 - diff else diff
-//    }
-
-//    private fun isLeftRelative(heading: Float, targetDeg: Double?): Boolean {
-//        targetDeg ?: return false
-//        val diff = ((targetDeg - heading + 360) % 360)
-//        return diff in 90.0..270.0
-//    }
 
     private fun haversine(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
         val r = 6371000.0
