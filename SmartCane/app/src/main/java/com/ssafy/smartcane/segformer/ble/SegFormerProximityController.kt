@@ -4,40 +4,43 @@ import android.os.Handler
 import android.os.Looper
 import com.ssafy.smartcane.detection.TFLiteRunner
 import com.ssafy.smartcane.segformer.model.SegmentationResult
-import kotlin.math.abs
 
 /**
- * SafetyWalk의 ProximityVibrationController 와 동일한 패턴(B3 × 3, 2s 쿨다운,
- * 해제 시 O)을 SegFormer 추론 결과 기반으로 재현한다.
+ * 3×3 존 기반 위험 감지 컨트롤러.
  *
- * 정면 [dangerThresholdM] m 이내, 좌우 ±[lateralThresholdM] m 안에서 위험 클래스
- * (차도/자전거도로/골목/주의구역)가 감지되면 진동 시퀀스를 전송한다.
+ * 존 배치:
+ *   0 | 1 | 2
+ *   ---------
+ *   3 | 4 | 5
+ *   ---------
+ *   6 | 7 | 8
  *
- * SegFormer + YOLO 병렬 운영: YOLO 가 횡단보도/적색 신호를 감지해도 진동 트리거.
+ * Zone 7 (정면 하단): 주의구역/차도 감지 → W,B,500,2 (두 번 경고)
+ * Zone 4 (정면 중단): 주의구역/차도 감지 → W,B,1200,2 (위요위용)
+ * YOLO (횡단보도/적색신호):          → B3 × 3회
+ *
+ * 우선순위: Zone 7 > Zone 4 > YOLO
  */
 class SegFormerProximityController(
     private val send: (String) -> Unit,
     private val dangerClassNames: Set<String> = DEFAULT_DANGER_CLASSES,
     private val yoloDangerLabels: Set<String> = DEFAULT_YOLO_DANGER_LABELS,
-    private val dangerThresholdM: Float = 2.0f,
-    private val lateralThresholdM: Float = 1.2f,
-    private val cooldownMs: Long = 2000L,
+    private val zonePixelThreshold: Float = 0.03f,  // 존 내 위험 픽셀 비율 하한
+    private val cooldownMs: Long = 4000L,
     private val respectCooldown: Boolean = true,
-    private val frameTimeoutMs: Long = 1000L,
+    private val frameTimeoutMs: Long = 3000L,
     private val entryConfirmMs: Long = 300L,
     private val exitHangoverMs: Long = 1500L,
 ) {
+    private enum class DangerZone { NONE, ZONE4, ZONE7 }
+
     private val handler = Handler(Looper.getMainLooper())
 
-    @Volatile private var sequencePlaying = false
+    @Volatile private var tripleSequencePlaying = false
     private var lastActive = false
     private var lastSentAt = 0L
-
-    // Phase 1-A: 마지막 update 호출 시각 — UVC hiccup 으로 분석이 끊겼을 때 잔존 상태 무효화
     private var lastUpdateAt = 0L
-    // Phase 1-B: raw danger=true 스트릭 시작 시각 (0 = 진행 중 아님)
     private var dangerEnteredAt = 0L
-    // Phase 1-C: raw danger=false 스트릭 시작 시각 (0 = 진행 중 아님)
     private var dangerExitedAt = 0L
 
     fun update(
@@ -46,7 +49,7 @@ class SegFormerProximityController(
     ) {
         val now = System.currentTimeMillis()
 
-        // Phase 1-A: 프레임 신선도 — 1초 이상 update 누락 시 강제 초기화
+        // 프레임 신선도 — 1초 이상 누락 시 초기화
         if (lastUpdateAt > 0L && now - lastUpdateAt > frameTimeoutMs) {
             cancelSequence()
             if (lastActive) send("O")
@@ -57,10 +60,12 @@ class SegFormerProximityController(
         }
         lastUpdateAt = now
 
-        val raw = hasDanger(result) || hasYoloDanger(yoloDetections)
+        val dangerZone = detectDangerZone(result)
+        val yoloDanger = hasYoloDanger(yoloDetections)
+        val rawDanger = dangerZone != DangerZone.NONE || yoloDanger
 
-        // Phase 1-B/1-C: 스트릭 타이머 갱신
-        if (raw) {
+        // 스트릭 타이머 갱신
+        if (rawDanger) {
             if (dangerEnteredAt == 0L) dangerEnteredAt = now
             dangerExitedAt = 0L
         } else {
@@ -69,11 +74,9 @@ class SegFormerProximityController(
         }
 
         val effectiveDanger = if (lastActive) {
-            // Phase 1-C: 활성 상태에서는 hangover 동안 유지
-            raw || (now - dangerExitedAt < exitHangoverMs)
+            rawDanger || (dangerExitedAt > 0L && now - dangerExitedAt < exitHangoverMs)
         } else {
-            // Phase 1-B: 비활성 상태에서는 ENTRY_CONFIRM_MS 지속돼야 진입
-            raw && (now - dangerEnteredAt >= entryConfirmMs)
+            rawDanger && (now - dangerEnteredAt >= entryConfirmMs)
         }
 
         when {
@@ -84,17 +87,18 @@ class SegFormerProximityController(
                     lastActive = false
                 }
             }
-
-            sequencePlaying -> return
-
+            tripleSequencePlaying -> return
             else -> {
-                val cooldownElapsed = now - lastSentAt >= cooldownMs
-                if (respectCooldown && !cooldownElapsed) return
-
+                if (respectCooldown && now - lastSentAt < cooldownMs) return
                 cancelSequence()
                 lastSentAt = now
                 lastActive = true
-                playTriple()
+
+                when {
+                    dangerZone == DangerZone.ZONE7 -> send("W,B,500,2")
+                    dangerZone == DangerZone.ZONE4 -> send("W,B,1200,2")
+                    yoloDanger -> playTriple()
+                }
             }
         }
     }
@@ -109,54 +113,89 @@ class SegFormerProximityController(
         dangerExitedAt = 0L
     }
 
-    private fun hasDanger(result: SegmentationResult): Boolean {
-        val projection = result.groundProjection ?: return false
-        return projection.classSummaries.any { summary ->
-            val name = result.classNames.getOrNull(summary.classIndex) ?: return@any false
-            if (name !in dangerClassNames) return@any false
-            summary.minForwardM in 0f..dangerThresholdM &&
-                abs(summary.centroidLateralM) <= lateralThresholdM
-        }
+    // ── 존 기반 마스크 분석 ────────────────────────────────────────────────
+
+    private fun detectDangerZone(result: SegmentationResult): DangerZone {
+        if (isZoneDanger(result, zone = 7)) return DangerZone.ZONE7
+        if (isZoneDanger(result, zone = 4, bottomHalfOnly = true)) return DangerZone.ZONE4
+        return DangerZone.NONE
     }
 
     /**
-     * YOLO 위험 감지 — 횡단보도/적색 신호 발견 시 trigger.
-     * TFLiteRunner.detectAll() 이 이미 클래스별 confidence threshold + NMS 를 적용했으므로
-     * 여기서는 라벨 화이트리스트 매칭만 한다.
+     * 3×3 그리드에서 [zone]번 영역의 위험 픽셀 비율이 [zonePixelThreshold] 이상이면 true.
+     * zone = row*3 + col 이므로:
+     *   zone 4 → row=1, col=1 (정면 중단 — bottomHalfOnly=true 시 아래 절반만 검사)
+     *   zone 7 → row=2, col=1 (정면 하단)
      */
+    private fun isZoneDanger(
+        result: SegmentationResult,
+        zone: Int,
+        bottomHalfOnly: Boolean = false
+    ): Boolean {
+        val mask = result.mask
+        val w = result.maskWidth
+        val h = result.maskHeight
+        if (w == 0 || h == 0 || mask.isEmpty()) return false
+
+        val col = zone % 3
+        val row = zone / 3
+        val zoneW = w / 3
+        val zoneH = h / 3
+        val xStart = col * zoneW
+        val xEnd = if (col == 2) w else xStart + zoneW
+        val zoneYStart = row * zoneH
+        val zoneYEnd = if (row == 2) h else zoneYStart + zoneH
+        val yStart = if (bottomHalfOnly) zoneYStart + zoneH / 2 else zoneYStart
+        val yEnd = zoneYEnd
+
+        var dangerPixels = 0
+        var totalPixels = 0
+
+        for (y in yStart until yEnd) {
+            for (x in xStart until xEnd) {
+                val idx = y * w + x
+                if (idx >= mask.size) continue
+                val className = result.classNames.getOrNull(mask[idx]) ?: continue
+                totalPixels++
+                if (className in dangerClassNames) dangerPixels++
+            }
+        }
+
+        return totalPixels > 0 && dangerPixels.toFloat() / totalPixels >= zonePixelThreshold
+    }
+
+    // ── YOLO 위험 감지 ────────────────────────────────────────────────────
+
     private fun hasYoloDanger(detections: List<TFLiteRunner.Result>): Boolean {
         if (detections.isEmpty() || yoloDangerLabels.isEmpty()) return false
         return detections.any { it.label in yoloDangerLabels }
     }
 
+    // ── BLE 시퀀스 ────────────────────────────────────────────────────────
+
     private fun playTriple() {
-        sequencePlaying = true
+        tripleSequencePlaying = true
         send("B3")
         handler.postDelayed({
             send("B3")
             handler.postDelayed({
                 send("B3")
-                handler.postDelayed({ sequencePlaying = false }, 300)
+                handler.postDelayed({ tripleSequencePlaying = false }, 300)
             }, 300)
         }, 300)
     }
 
     private fun cancelSequence() {
         handler.removeCallbacksAndMessages(null)
-        sequencePlaying = false
+        tripleSequencePlaying = false
     }
 
     companion object {
-        // 진동 트리거 클래스: caution_zone(주의구역) / roadway(차도) 만.
-        // bike_lane, alley 는 일반적 보행 가능 통로로 간주 → 진동 제외.
         val DEFAULT_DANGER_CLASSES: Set<String> = setOf(
             "caution_zone",
             "roadway",
         )
 
-        // YOLO 4클래스 중 위험 신호로 사용할 라벨
-        // green_pedestrian_light = 안전(횡단 가능) → 제외
-        // pedestrian_traffic_light = 신호등 본체 → 제외 (red/green 으로 충분)
         val DEFAULT_YOLO_DANGER_LABELS: Set<String> = setOf(
             "crosswalk",
             "red_pedestrian_light",

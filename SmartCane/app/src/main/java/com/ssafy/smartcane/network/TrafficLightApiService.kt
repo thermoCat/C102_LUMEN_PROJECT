@@ -16,7 +16,9 @@ data class NearestTrafficLight(
     val trafficLightType: Int?,
     val facingDirection: Double?,
     val lat: Double,
-    val lng: Double
+    val lng: Double,
+    val lightingDuration: Int?,    // 녹색 지속시간 (초)
+    val lightingSequence: String?  // "적색초|HH:MM:SS" 형식
 )
 
 object TrafficLightApiService {
@@ -56,7 +58,9 @@ object TrafficLightApiService {
                             facingDirection = if (props.isNull("facingDirection")) null
                                              else props.getDouble("facingDirection"),
                             lat = coords.getDouble(1),
-                            lng = coords.getDouble(0)
+                            lng = coords.getDouble(0),
+                            lightingDuration = props.optInt("lightingDuration").takeIf { it != 0 },
+                            lightingSequence = props.optString("lightingSequence").takeIf { it.isNotEmpty() }
                         )
                     )
                 }

@@ -453,7 +453,7 @@ private fun ControlTab(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
             shape = RoundedCornerShape(10.dp)
         ) {
-            Text("AI 위험 감지 시작 (카메라)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite)
+            Text("SegFormer + Detection", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AppWhite)
         }
 
         Spacer(Modifier.height(8.dp))

@@ -128,16 +128,59 @@ class AssistOverlayRenderer {
         isFakeBoldText = true
     }
 
-    fun render(width: Int, height: Int, decision: AssistDecision, topInsetPx: Float = 0f, buttonRightPx: Float = 0f, buttonHeightPx: Float = 0f): Bitmap {
+    fun render(
+        width: Int,
+        height: Int,
+        decision: AssistDecision,
+        topInsetPx: Float = 0f,
+        buttonRightPx: Float = 0f,
+        buttonHeightPx: Float = 0f,
+        rawDetections: List<com.ssafy.smartcane.detection.TFLiteRunner.Result> = emptyList()
+    ): Bitmap {
         val bitmap = reusableBitmap
             ?.takeIf { it.width == width && it.height == height }
             ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { reusableBitmap = it }
         bitmap.eraseColor(Color.TRANSPARENT)
         val canvas = Canvas(bitmap)
         drawGuidePathVisualization(canvas, decision)
+        drawRawDetections(canvas, width, height, rawDetections)
         val panelBottom = drawGuidancePanel(canvas, width, decision, topInsetPx, buttonRightPx, buttonHeightPx)
         drawSituationAlerts(canvas, width, panelBottom, decision)
         return bitmap
+    }
+
+    private fun drawRawDetections(
+        canvas: Canvas,
+        width: Int,
+        height: Int,
+        detections: List<com.ssafy.smartcane.detection.TFLiteRunner.Result>
+    ) {
+        if (detections.isEmpty()) return
+        detections.forEach { r ->
+            val left   = r.x1 * width
+            val top    = r.y1 * height
+            val right  = r.x2 * width
+            val bottom = r.y2 * height
+            trafficBoxPaint.color = rawDetectionColor(r.label)
+            canvas.drawRoundRect(left, top, right, bottom, 8f, 8f, trafficBoxPaint)
+            val label = "${r.label} ${(r.confidence * 100).toInt()}%"
+            val labelW = trafficLabelPaint.measureText(label) + 18f
+            val labelTop = (bottom + 5f).coerceAtMost(height - trafficLabelPaint.textSize - 8f)
+            canvas.drawRoundRect(left, labelTop, (left + labelW).coerceAtMost(width.toFloat() - 4f),
+                labelTop + trafficLabelPaint.textSize + 12f, 8f, 8f, trafficLabelBgPaint)
+            canvas.drawText(label, left + 9f, labelTop + trafficLabelPaint.textSize + 2f, trafficLabelPaint)
+        }
+    }
+
+    private fun rawDetectionColor(label: String): Int = when (label) {
+        "crosswalk"                -> Color.rgb(90, 210, 255)
+        "green_light"              -> Color.rgb(70, 230, 120)
+        "red_light"                -> Color.rgb(255, 90, 90)
+        "pedestrian_traffic_light" -> Color.rgb(255, 220, 90)
+        "person"                   -> Color.rgb(180, 100, 255)
+        "pole", "bollard"          -> Color.rgb(255, 150, 50)
+        "barricade", "movable_signage" -> Color.rgb(255, 80, 80)
+        else                       -> Color.rgb(200, 200, 200)
     }
 
     private fun drawGuidePathVisualization(canvas: Canvas, decision: AssistDecision) {
