@@ -32,7 +32,6 @@ import com.ssafy.smartcane.segformer.camera.UvcCameraController
 import com.ssafy.smartcane.databinding.ActivitySegformerBinding
 import com.ssafy.smartcane.segformer.inference.LiteRtSegFormerSegmenter
 import com.ssafy.smartcane.segformer.model.ClassGroundSummary
-import com.ssafy.smartcane.segformer.model.GroundProjection
 import com.ssafy.smartcane.segformer.model.SegmentationResult
 import com.ssafy.smartcane.segformer.pose.OrientationProvider
 import com.ssafy.smartcane.segformer.pose.OsmoAction4Intrinsics
@@ -432,7 +431,6 @@ class SegFormerActivity : ComponentActivity() {
                 sourceWidth = result.sourceWidth,
                 sourceHeight = result.sourceHeight,
                 letterbox = result.letterbox,
-                virtualBrailleGuide = result.groundProjection?.virtualBrailleGuide,
             )
             binding.overlayView.setYoloDetections(yolo)
             binding.statusText.text = getString(
@@ -482,24 +480,13 @@ class SegFormerActivity : ComponentActivity() {
             .filter { it.classIndex != BACKGROUND_CLASS_INDEX }
             .sortedBy { it.minForwardM }
             .take(MAX_NAVIGATION_ENTRIES)
-        val virtualGuide = formatVirtualBrailleGuide(projection)
         if (entries.isEmpty()) {
-            return virtualGuide ?: getString(R.string.nav_no_ground_classes)
+            return getString(R.string.nav_no_ground_classes)
         }
-        val parts = entries.joinToString(" | ") { formatNavigationEntry(it, result) }
-        val navParts = if (virtualGuide == null) parts else "$parts | $virtualGuide"
-        return getString(R.string.nav_summary_template, navParts, projection.cameraHeightM)
-    }
-
-    private fun formatVirtualBrailleGuide(projection: GroundProjection): String? {
-        val guide = projection.virtualBrailleGuide ?: return null
-        val mode = getString(R.string.nav_virtual_braille_world)
         return getString(
-            R.string.nav_virtual_braille_guide_template,
-            mode,
-            guide.startForwardM,
-            guide.endForwardM,
-            guide.anchorCount,
+            R.string.nav_summary_template,
+            entries.joinToString(" | ") { formatNavigationEntry(it, result) },
+            projection.cameraHeightM,
         )
     }
 

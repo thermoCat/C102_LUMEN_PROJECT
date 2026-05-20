@@ -5,17 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import com.ssafy.smartcane.detection.TFLiteRunner
-import com.ssafy.smartcane.segformer.model.BrailleTilePattern
 import com.ssafy.smartcane.segformer.model.LetterboxInfo
-import com.ssafy.smartcane.segformer.model.SourcePoint
-import com.ssafy.smartcane.segformer.model.VirtualBrailleGuide
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -28,7 +23,6 @@ class SegmentationOverlayView @JvmOverloads constructor(
     private var sourceWidth: Int = 0
     private var sourceHeight: Int = 0
     private var letterbox: LetterboxInfo? = null
-    private var virtualBrailleGuide: VirtualBrailleGuide? = null
     private var yoloDetections: List<TFLiteRunner.Result> = emptyList()
 
     private val sourceRect = Rect()
@@ -48,29 +42,6 @@ class SegmentationOverlayView @JvmOverloads constructor(
     }
     private val yoloLabelTextBounds = Rect()
     private val yoloLabelRect = RectF()
-    private val guidePath = Path()
-    private val guideFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(180, 209, 167, 39)
-        style = Paint.Style.FILL
-    }
-    private val guideStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(230, 95, 73, 18)
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-    }
-    private val raisedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(210, 232, 193, 68)
-        style = Paint.Style.FILL
-    }
-    private val raisedShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(130, 111, 82, 18)
-        style = Paint.Style.FILL
-    }
-    private val raisedHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(120, 255, 236, 137)
-        style = Paint.Style.STROKE
-        strokeWidth = 2f
-    }
 
     fun setResult(
         mask: IntArray,
@@ -79,12 +50,10 @@ class SegmentationOverlayView @JvmOverloads constructor(
         sourceWidth: Int,
         sourceHeight: Int,
         letterbox: LetterboxInfo,
-        virtualBrailleGuide: VirtualBrailleGuide?,
     ) {
         this.sourceWidth = sourceWidth
         this.sourceHeight = sourceHeight
         this.letterbox = letterbox
-        this.virtualBrailleGuide = virtualBrailleGuide
         this.maskBitmap?.recycle()
         this.maskBitmap = createMaskBitmap(mask, maskWidth, maskHeight)
         postInvalidateOnAnimation()
@@ -134,7 +103,6 @@ class SegmentationOverlayView @JvmOverloads constructor(
             offsetY + sourceHeight * previewScale,
         )
         canvas.drawBitmap(bitmap, sourceRect, destinationRect, overlayPaint)
-        drawVirtualBrailleGuide(canvas, virtualBrailleGuide, previewScale, offsetX, offsetY)
         drawYoloDetections(canvas, destinationRect)
     }
 
@@ -186,120 +154,6 @@ class SegmentationOverlayView @JvmOverloads constructor(
             "pedestrian_traffic_light" -> Color.rgb(255, 200, 0)  // 노랑: 신호등 본체
             else -> Color.rgb(255, 140, 0)                     // 주황: 기타
         }
-    }
-
-    private fun drawVirtualBrailleGuide(
-        canvas: Canvas,
-        guide: VirtualBrailleGuide?,
-        previewScale: Float,
-        offsetX: Float,
-        offsetY: Float,
-    ) {
-        if (guide == null) return
-        for (block in guide.blocks) {
-            if (block.corners.size < 4) continue
-            val corners = block.corners.map {
-                SourcePoint(
-                    x = offsetX + it.x * previewScale,
-                    y = offsetY + it.y * previewScale,
-                )
-            }
-            drawTile(canvas, corners, guideFillPaint)
-            when (block.pattern) {
-                BrailleTilePattern.DIRECTIONAL -> drawDirectionalBars(canvas, corners)
-                BrailleTilePattern.WARNING -> drawWarningDots(canvas, corners)
-            }
-            drawTile(canvas, corners, guideStrokePaint)
-        }
-    }
-
-    private fun drawTile(canvas: Canvas, corners: List<SourcePoint>, paint: Paint) {
-        guidePath.reset()
-        guidePath.moveTo(corners[0].x, corners[0].y)
-        for (index in 1 until corners.size) {
-            guidePath.lineTo(corners[index].x, corners[index].y)
-        }
-        guidePath.close()
-        canvas.drawPath(guidePath, paint)
-    }
-
-    private fun drawDirectionalBars(canvas: Canvas, corners: List<SourcePoint>) {
-        val barCenters = floatArrayOf(0.20f, 0.40f, 0.60f, 0.80f)
-        for (center in barCenters) {
-            drawRaisedPatch(
-                canvas = canvas,
-                corners = corners,
-                startS = 0.12f,
-                endS = 0.88f,
-                startL = center - 0.045f,
-                endL = center + 0.045f,
-            )
-        }
-    }
-
-    private fun drawWarningDots(canvas: Canvas, corners: List<SourcePoint>) {
-        val radius = max(2.0f, min(tileWidthPx(corners), tileLengthPx(corners)) * 0.055f)
-        val positions = floatArrayOf(0.20f, 0.40f, 0.60f, 0.80f)
-        for (s in positions) {
-            for (l in positions) {
-                val center = pointInTile(corners, s, l)
-                canvas.drawCircle(center.x + radius * 0.25f, center.y + radius * 0.35f, radius, raisedShadowPaint)
-                canvas.drawCircle(center.x, center.y, radius, raisedPaint)
-                canvas.drawCircle(center.x - radius * 0.20f, center.y - radius * 0.20f, radius * 0.55f, raisedHighlightPaint)
-            }
-        }
-    }
-
-    private fun drawRaisedPatch(
-        canvas: Canvas,
-        corners: List<SourcePoint>,
-        startS: Float,
-        endS: Float,
-        startL: Float,
-        endL: Float,
-    ) {
-        val patch = listOf(
-            pointInTile(corners, startS, startL),
-            pointInTile(corners, endS, startL),
-            pointInTile(corners, endS, endL),
-            pointInTile(corners, startS, endL),
-        )
-        val shadow = patch.map { SourcePoint(it.x + 2f, it.y + 2f) }
-        drawTile(canvas, shadow, raisedShadowPaint)
-        drawTile(canvas, patch, raisedPaint)
-        guidePath.reset()
-        guidePath.moveTo(patch[0].x, patch[0].y)
-        guidePath.lineTo(patch[1].x, patch[1].y)
-        canvas.drawPath(guidePath, raisedHighlightPaint)
-    }
-
-    private fun pointInTile(corners: List<SourcePoint>, s: Float, l: Float): SourcePoint {
-        val left = lerp(corners[0], corners[1], s)
-        val right = lerp(corners[3], corners[2], s)
-        return lerp(left, right, l)
-    }
-
-    private fun lerp(start: SourcePoint, end: SourcePoint, t: Float): SourcePoint {
-        return SourcePoint(
-            x = start.x + (end.x - start.x) * t,
-            y = start.y + (end.y - start.y) * t,
-        )
-    }
-
-    private fun tileWidthPx(corners: List<SourcePoint>): Float {
-        val nearWidth = distance(corners[0], corners[3])
-        val farWidth = distance(corners[1], corners[2])
-        return (nearWidth + farWidth) / 2f
-    }
-
-    private fun tileLengthPx(corners: List<SourcePoint>): Float {
-        val leftLength = distance(corners[0], corners[1])
-        val rightLength = distance(corners[3], corners[2])
-        return (leftLength + rightLength) / 2f
-    }
-
-    private fun distance(a: SourcePoint, b: SourcePoint): Float {
-        return hypot(a.x - b.x, a.y - b.y)
     }
 
     private fun createMaskBitmap(mask: IntArray, maskWidth: Int, maskHeight: Int): Bitmap {

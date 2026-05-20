@@ -21,6 +21,4 @@
     <string name="nav_lateral_left">L %1$.2f</string>
     <string name="nav_lateral_right">R %1$.2f</string>
     <string name="nav_summary_template">%1$s | h=%2$.2f m</string>
-    <string name="nav_virtual_braille_world">W</string>
-    <string name="nav_virtual_braille_guide_template">AR braille %1$s %2$.2f-%3$.2f m A %4$d</string>
 </resources>
