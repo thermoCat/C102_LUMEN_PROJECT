@@ -125,17 +125,7 @@ class MainActivity : ComponentActivity() {
                         else -> NavigationScreen(viewModel = navigationViewModel)
                     }
 
-                    FloatingActionButton(
-                        onClick = { showBleTest = !showBleTest },
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 96.dp),
-                        containerColor = Color.White.copy(alpha = 0.15f),
-                        contentColor = Color.Transparent,
-                        elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp)
-                    ) {
-                        Text(text = " ", fontSize = 14.sp)
-                    }
+                    // 앱 테스트 대쉬보드 진입 버튼 비활성화 (feature/main-app)
                 }
             }
         }
