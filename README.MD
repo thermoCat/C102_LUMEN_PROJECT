@@ -249,27 +249,17 @@ SmartCane은 **Segmentation** 과 **Detection** 두 모델이 동시에 실행�
   </tr>
   <tr>
     <td>
-      <table>
-        <tr>
-          <td><img src="docs/images/ai/segmentation/bad3.jpg" width="100%"/></td>
-          <td><img src="docs/images/ai/segmentation/bad3-1.jpg" width="100%"/></td>
-        </tr>
-        <tr>
-          <td><img src="docs/images/ai/segmentation/bad1.jpg" width="100%"/></td>
-          <td><img src="docs/images/ai/segmentation/bad2.jpg" width="100%"/></td>
-        </tr>
-      </table>
+      <img src="docs/images/ai/segmentation/bad3.jpg" width="49%"/>
+      <img src="docs/images/ai/segmentation/bad3-1.jpg" width="49%"/>
+      <br>
+      <img src="docs/images/ai/segmentation/bad1.jpg" width="49%"/>
+      <img src="docs/images/ai/segmentation/bad2.jpg" width="49%"/>
     </td>
     <td>
-      <table>
-        <tr>
-          <td><img src="docs/images/ai/segmentation/good1.jpg" width="100%"/></td>
-          <td><img src="docs/images/ai/segmentation/good2.jpg" width="100%"/></td>
-        </tr>
-        <tr>
-          <td colspan="2"><img src="docs/images/ai/segmentation/good3.jpg" width="100%"/></td>
-        </tr>
-      </table>
+      <img src="docs/images/ai/segmentation/good1.jpg" width="49%"/>
+      <img src="docs/images/ai/segmentation/good2.jpg" width="49%"/>
+      <br>
+      <img src="docs/images/ai/segmentation/good3.jpg" width="100%"/>
     </td>
   </tr>
 </table>
